@@ -22,7 +22,7 @@ train:
   weight_decay: 1.0e-4
   class_weighting: true
   amp: true
-  num_workers: 4
+  num_workers: 0          # >0 on Windows hit WinError 1455 (page file); see RESUME.md
   patience: 8
   seed: 42
   init_checkpoint: null   # path to a model.pt to fine-tune from (retraining)
