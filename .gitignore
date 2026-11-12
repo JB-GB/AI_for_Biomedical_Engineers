@@ -1,8 +1,8 @@
 # Patient data and generated artefacts (never commit)
-data/
+/data/
 *.dcm
-models/
-outputs/
+/models/
+/outputs/
 mlruns/
 wandb/
 .dvc/cache/
