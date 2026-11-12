@@ -51,9 +51,9 @@ gantt
 **Objective:** reproducible repo, rules enforced, team aligned.
 - T0.1 Create branch `PIA_devl`, docs skeleton, logbook. ✅
 - T0.2 Install commit-msg hook (`git config core.hooksPath .githooks`) on every clone.
-- T0.3 Answer open questions in `00_feasibility.md §6`; log decisions.
-- T0.4 Choose architecture option (A or B, `02_architecture.md`); log ADR.
-- T0.5 Create `pyproject.toml`/`requirements.txt`, project layout, `.gitignore` for data/models.
+- T0.3 Answer open questions in `00_feasibility.md §6`; log decisions. ✅
+- T0.4 Choose architecture option → **Option B** (ADR-001). ✅
+- T0.5 Create `pyproject.toml`, project layout, manifest + patient-level split.
 - T0.6 Assign work packages to the 3 contributors.
 **Exit criteria:** hook works, option chosen, env installs from scratch in < 10 min.
 
@@ -65,8 +65,9 @@ gantt
 - T1.4 Define labelling guide (EULAR-OMERACT 0–3 GS, 0–3 PD, combined).
 - T1.5 Set up labelling tool (Label Studio / CVAT) and double-rate ≥ 20 % of images.
 - T1.6 Request datasets from authors of related work (log responses).
-- T1.7 Fallback: synthetic image generator + healthy-volunteer images.
-**Exit criteria:** dataset v0 frozen with `manifest.csv` + inter-rater kappa reported.
+- T1.7 Synthetic MCP/wrist generator with GS/PD grades 0–3 (stage S2). **Do first.**
+- T1.8 Download selected public MSK US datasets (stage S1); log licences.
+**Exit criteria:** S1+S2 datasets ready now; clinical dataset v0 (S3) whenever the hospital delivers.
 
 ### M2 — Data pipeline & EDA
 - T2.1 De-identification script: strip DICOM tags, crop burned-in text/UI.
@@ -77,7 +78,7 @@ gantt
 
 ### M3 — Baseline model
 - T3.1 Config-driven training script (`configs/*.yaml`).
-- T3.2 Baseline: ImageNet-pretrained ResNet18 / EfficientNet-B0, binary (0–1 vs 2–3).
+- T3.2 Baseline: ImageNet-pretrained EfficientNet-B0 / ConvNeXt-T, two inputs (GS + PD), 4-class head; fits 8 GB VRAM with AMP.
 - T3.3 Metrics: accuracy, balanced acc, sensitivity, specificity, AUC, quadratic weighted kappa.
 - T3.4 Experiment tracking (MLflow local or W&B free tier).
 - T3.5 Model card v0.
@@ -98,7 +99,8 @@ gantt
 
 ### M6 — GUI for non-technical users
 - T6.1 Wireframe: load image → result (grade, confidence, heat-map) → export PDF report.
-- T6.2 Implement GUI (option-dependent).
+- T6.2 FastAPI inference service (ONNX Runtime) + PySide6 desktop client.
+- T6.5 PyInstaller installer for Windows; Docker Compose for research servers.
 - T6.3 "Submit correction" button: clinician corrects the grade → feeds `data/incoming/`.
 - T6.4 Usability test with ≥ 3 non-technical users (SUS questionnaire → paper).
 
@@ -118,7 +120,8 @@ gantt
 
 | Risk | P | Impact | Mitigation |
 |---|---|---|---|
-| No clinical data | High | Critical | Start M1 immediately; fallback path; contact authors. |
+| No clinical data | High | Critical | Staged S0–S2 base model; retraining loop ready for hospital data. |
+| Synthetic-to-real gap | High | High | S1 real-US pre-training; report synthetic results only as pipeline checks. |
 | Ethics approval delay | Med | High | Submit in week 1; work on synthetic data meanwhile. |
 | Data leakage (same patient in train/test) | Med | High | Patient-level split enforced in code + test. |
 | Device/domain shift | High | Med | Log device per image; report per-device metrics. |
