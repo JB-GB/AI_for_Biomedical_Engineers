@@ -70,7 +70,35 @@ synthetic/pilot dataset + pipeline), but with weaker clinical claims.
 4. **Synthetic pre-training** (as in medRxiv 2024) + generic US pre-training
    (other public US datasets) → fine-tune on small real set.
 
-## 6. Open questions for the team (answers change the plan)
+### 5.1 Adopted strategy: staged transfer learning (decided 2026-11-11)
+
+No direct clinical access yet, so the base model is built without patient data
+and the pipeline stays open for hospital data later.
+
+| Stage | Data | Purpose | Clinically valid? |
+|---|---|---|---|
+| S0 | ImageNet or open US foundation weights (USF-MAE, OpenUS) | Generic visual features | No |
+| S1 | Public MSK US, unlabelled (UMUD index: muscle/tendon datasets) | Domain-adaptive self-supervised pre-training | No |
+| S2 | Synthetic MCP/wrist images with controlled GS/PD grades 0–3 | Train grading head, test the full pipeline end-to-end | No |
+| S3 | Hospital data labelled by specialists (via retraining loop) | Fine-tune and validate | **Yes, after validation** |
+
+Rules: every model records its provenance (`stage`, data hashes); the UI shows
+a "not clinically validated" banner until an S3 model passes the frozen test set.
+Synthetic-data results are reported in the paper only as pipeline verification.
+
+## 6. Open questions — answered 2026-11-11 (see logbook M0-T0.3)
+
+| # | Answer |
+|---|---|
+| 1 | No direct access; possible hospital data later → strategy 5.1 |
+| 2 | MCP 2–3 + wrist |
+| 3 | GS **and** PD |
+| 4 | 4-class (0–3) |
+| 5 | No fixed date; internal review, then course forum |
+| 6 | RTX 4070 Laptop (8 GB), i7-13700HX, 32 GB RAM |
+| 7–8 | Pending |
+
+### Original questions
 
 1. Do you have access to a rheumatologist / hospital that can provide and label images? (Decides M1.)
 2. Which joints? Recommended: **MCP 2–3 dorsal longitudinal + wrist** (most studied).
