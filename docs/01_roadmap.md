@@ -65,7 +65,7 @@ gantt
 - T1.4 Define labelling guide (EULAR-OMERACT 0–3 GS, 0–3 PD, combined).
 - T1.5 Set up labelling tool (Label Studio / CVAT) and double-rate ≥ 20 % of images.
 - T1.6 Request datasets from authors of related work (log responses).
-- T1.7 Synthetic MCP/wrist generator with GS/PD grades 0–3 (stage S2). **Do first.**
+- T1.7 Synthetic MCP/wrist generator with GS/PD grades 0–3 (stage S2). ✅
 - T1.8 Download selected public MSK US datasets (stage S1); log licences.
 **Exit criteria:** S1+S2 datasets ready now; clinical dataset v0 (S3) whenever the hospital delivers.
 
