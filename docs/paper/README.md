@@ -31,7 +31,8 @@ All with 95 % bootstrap CIs, patient-level.
 ## Figures checklist
 - [ ] System architecture diagram
 - [ ] Dataset flow (CONSORT-style: patients → images → splits)
-- [ ] Example images per grade + Grad-CAM
+- [x] Example synthetic images per grade (`figures/synthetic_examples.png`)
+- [ ] Real example images per grade + Grad-CAM
 - [ ] Confusion matrix, ROC
 - [ ] Retraining curve (performance vs added data)
 - [ ] GUI screenshot
