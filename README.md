@@ -8,7 +8,7 @@ on MCP 2–3 and wrist ultrasound. **Research use only — not a diagnostic devi
 
 Docs: [feasibility](docs/00_feasibility.md) · [roadmap](docs/01_roadmap.md) ·
 [architecture](docs/02_architecture.md) · [runtimes](docs/03_colab_and_runners.md) ·
-[logbook](docs/logbook/README.md) · [paper](docs/paper/README.md) · [contributing](CONTRIBUTING.md)
+[**resume guide**](docs/RESUME.md) · [logbook](docs/logbook/README.md) · [paper](docs/paper/README.md) · [contributing](CONTRIBUTING.md)
 
 ### Quick start (development)
 ```bash
