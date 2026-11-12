@@ -84,6 +84,11 @@ def build_loaders(cfg: dict):
         if not splits[name]:
             raise ValueError(f"split '{name}' is empty; add more patients")
     workers = t.get("num_workers", 0)
+    if workers > 0:
+        # Spawned workers (Windows) re-import numpy; one BLAS thread each avoids
+        # "OpenBLAS error: Memory allocation still failed".
+        for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+            os.environ.setdefault(var, "1")
     loaders = {}
     for name, recs in splits.items():
         ds = JointDataset(recs, root, d["image_size"], train=name == "train")
