@@ -1,0 +1,28 @@
+# Baseline on synthetic data (stage S2). Override any key with --set key=value.
+run_name: baseline_s2
+stage: S2
+output_dir: outputs
+
+data:
+  root: ${RAUSNET_DATA_DIR}/synth   # environment variable, data lives outside the repo
+  manifest: manifest.csv
+  image_size: 224
+  split_ratios: [0.70, 0.15, 0.15]
+  split_salt: rausnet-split-v1
+
+model:
+  backbone: efficientnet_b0
+  pretrained: true
+  dropout: 0.2
+
+train:
+  epochs: 30
+  batch_size: 32
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  class_weighting: true
+  amp: true
+  num_workers: 4
+  patience: 8
+  seed: 42
+  init_checkpoint: null   # path to a model.pt to fine-tune from (retraining)

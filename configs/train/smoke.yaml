@@ -1,0 +1,28 @@
+# Fast end-to-end check (~1 min). Same pipeline as baseline, tiny settings.
+run_name: smoke
+stage: S2
+output_dir: outputs
+
+data:
+  root: ${RAUSNET_DATA_DIR}/synth
+  manifest: manifest.csv
+  image_size: 128
+  split_ratios: [0.70, 0.15, 0.15]
+  split_salt: rausnet-split-v1
+
+model:
+  backbone: resnet18
+  pretrained: false
+  dropout: 0.1
+
+train:
+  epochs: 2
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  class_weighting: true
+  amp: true
+  num_workers: 0
+  patience: 5
+  seed: 0
+  init_checkpoint: null
