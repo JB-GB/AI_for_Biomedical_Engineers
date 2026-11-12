@@ -1,0 +1,21 @@
+#!/bin/sh
+# Enforce project commit rules. See CONTRIBUTING.md.
+msg_file="$1"
+
+title=$(grep -v '^#' "$msg_file" | head -n 1)
+if ! printf '%s' "$title" | grep -Eq '^\[[A-Za-z]+\] \[[^]]+\] : .+'; then
+  echo "ERROR: title must match '[Type] [scope] : description'" >&2
+  exit 1
+fi
+
+if grep -Eiq '^co-authored-by:' "$msg_file"; then
+  echo "ERROR: co-author trailers are not allowed" >&2
+  exit 1
+fi
+
+words=$(grep -v '^#' "$msg_file" | tail -n +2 | wc -w)
+if [ "$words" -gt 25 ]; then
+  echo "ERROR: body has $words words (max 25)" >&2
+  exit 1
+fi
+exit 0
