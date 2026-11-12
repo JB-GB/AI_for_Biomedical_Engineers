@@ -200,3 +200,114 @@ def render_joint(
         gs, pd, mask = gs[:, ::-1], pd[:, ::-1], mask[:, ::-1]
     return SyntheticImage(np.ascontiguousarray(gs), np.ascontiguousarray(pd), np.ascontiguousarray(mask))
 
+
+# --------------------------------------------------------------------------- #
+# Dataset generation
+# --------------------------------------------------------------------------- #
+
+def sample_grades(rng: np.random.Generator, activity: float) -> tuple[int, int]:
+    """Sample consistent (GS, PD) grades from a patient-level disease activity in [0, 1]."""
+    if activity <= 0:
+        return 0, 0
+    grades = np.arange(4)
+    p_gs = np.exp(-((grades - 3 * activity) ** 2) / 0.8)
+    gs = int(rng.choice(grades, p=p_gs / p_gs.sum()))
+    if gs == 0:
+        return 0, 0
+    p_pd = np.exp(-((grades - gs * activity * 1.2) ** 2) / 0.8)
+    return gs, int(rng.choice(grades, p=p_pd / p_pd.sum()))
+
+
+def generate_dataset(out_dir, n_patients: int, seed: int = 0, size: int = 256, healthy: float = 0.25):
+    """Write GS/PD/mask PNGs, ``manifest.csv`` and ``dataset_info.json`` to ``out_dir``.
+
+    Each synthetic patient has MCP2, MCP3 and wrist on both sides (6 images).
+    Every image uses its own RNG derived from (seed, patient, joint, side), so a
+    single image can be regenerated exactly.
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from PIL import Image
+
+    from rausnet.data.manifest import SIDES, Record, write_manifest
+
+    out = Path(out_dir)
+    for sub in ("gs", "pd", "masks"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
+    patient_rng = np.random.default_rng([seed, 0])
+    records = []
+    for p in range(n_patients):
+        pid = f"SYN{seed:03d}-{p:05d}"
+        activity = 0.0 if patient_rng.random() < healthy else float(patient_rng.beta(2, 2))
+        for ji, joint in enumerate(JOINTS):
+            for si, side in enumerate(SIDES):
+                rng = np.random.default_rng([seed, 1, p, ji, si])
+                gs, pd = sample_grades(rng, activity)
+                img = render_joint(joint, gs, pd, rng, size)
+                iid = f"{pid}_{joint}_{side}"
+                Image.fromarray(img.gs).save(out / "gs" / f"{iid}.png")
+                Image.fromarray(img.pd).save(out / "pd" / f"{iid}.png")
+                Image.fromarray(img.mask.astype(np.uint8) * 255).save(out / "masks" / f"{iid}.png")
+                records.append(
+                    Record(iid, pid, joint, side, f"gs/{iid}.png", f"pd/{iid}.png", gs, pd,
+                           "synthetic", f"rausnet-synth-v{GENERATOR_VERSION}")
+                )
+    manifest = out / "manifest.csv"
+    write_manifest(records, manifest)
+    counts = {g: sum(r.combined_grade == g for r in records) for g in range(4)}
+    info = {
+        "generator_version": GENERATOR_VERSION,
+        "seed": seed,
+        "size": size,
+        "patients": n_patients,
+        "images": len(records),
+        "combined_grade_counts": counts,
+        "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+    }
+    (out / "dataset_info.json").write_text(json.dumps(info, indent=2))
+    return records
+
+
+def make_preview(path, seed: int = 0, size: int = 256) -> None:
+    """Save a figure grid: rows GS 0-3 (PD = GS), columns MCP GS/PD and wrist GS/PD."""
+    from PIL import Image, ImageDraw
+
+    pad, label = 6, 18
+    cols = [("MCP2", "gs"), ("MCP2", "pd"), ("WRIST", "gs"), ("WRIST", "pd")]
+    canvas = Image.new("RGB", (len(cols) * (size + pad) + 70, 4 * (size + pad) + label), "white")
+    draw = ImageDraw.Draw(canvas)
+    for c, (joint, kind) in enumerate(cols):
+        draw.text((70 + c * (size + pad), 2), f"{joint} {kind.upper()}", fill="black")
+    for g in range(4):
+        y = label + g * (size + pad)
+        draw.text((4, y + size // 2), f"GS{g}/PD{g}", fill="black")
+        for c, (joint, kind) in enumerate(cols):
+            img = render_joint(joint, g, g, np.random.default_rng([seed, g, c // 2]), size)
+            canvas.paste(Image.fromarray(getattr(img, kind)).convert("RGB"), (70 + c * (size + pad), y))
+    canvas.save(path)
+
+
+def main(argv=None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate a synthetic joint ultrasound dataset.")
+    parser.add_argument("--out", help="output directory (outside the repository)")
+    parser.add_argument("--patients", type=int, default=200)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--size", type=int, default=256)
+    parser.add_argument("--preview", help="only write a preview figure to this PNG path")
+    args = parser.parse_args(argv)
+    if args.preview:
+        make_preview(args.preview, args.seed, args.size)
+        print(f"preview written to {args.preview}")
+        return
+    if not args.out:
+        parser.error("--out is required unless --preview is given")
+    records = generate_dataset(args.out, args.patients, args.seed, args.size)
+    print(f"{len(records)} images written to {args.out}")
+
+
+if __name__ == "__main__":
+    main()
