@@ -76,21 +76,34 @@ robust. Useful only for the M3 spike.
 | Paper "engineering" value | ★★ | ★★★ | ★ |
 | Risk for 3 students | Low | High | Low |
 
-**Recommendation:** start with **A**; design `infer` so that an **ONNX export**
-is possible, allowing an upgrade path to **B** (FastAPI/desktop) in M6/M7 if time allows.
+## ADR-001 — Option B adopted (2026-11-11)
 
-## Proposed repository layout (Option A)
+**Decision:** Option B. **Reason:** integration with clinical researchers,
+continuity by other engineers, and a future path to research workflows with patients.
+
+**Consequences / concrete choices**
+- Python ≥ 3.11 package `rausnet` with optional extras so each role installs only what it needs:
+  `train` (torch, timm, mlflow), `serve` (fastapi, onnxruntime), `ui` (PySide6), `dev` (pytest, ruff).
+- Training stays PyTorch; **ONNX is the only contract** between training and serving.
+- The model file ships with a JSON sidecar (version, stage S0–S3, data hashes, metrics, input spec).
+- Desktop client talks only to the HTTP API → the same API serves a future web or hospital (PACS/DICOM) client.
+- Gradio kept only as a developer debug tool, not a deliverable.
+
+## Repository layout (Option B)
 
 ```
 .githooks/            commit-msg rules
 configs/              train/*.yaml, data/*.yaml
 docs/                 feasibility, roadmap, architecture, logbook, paper
-notebooks/            colab_train.ipynb, eda.ipynb (outputs stripped)
-rausnet/              core package
-  data/  models/  train.py  retrain.py  evaluate.py  infer.py
-app/                  gradio_app.py
-scripts/              deidentify.py, make_manifest.py, export_onnx.py
-tests/                unit tests (split leakage, preprocessing, inference)
+notebooks/            colab_train.ipynb (outputs stripped)
+src/rausnet/          core package
+  grading.py          EULAR-OMERACT scores
+  data/               manifest, split, synthetic, preprocessing
+  models/  train.py  retrain.py  evaluate.py  export.py
+  serve/              FastAPI app (ONNX Runtime)
+  ui/                 PySide6 desktop client
+tests/                unit tests
+docker/               api Dockerfile, compose.yaml
 .github/workflows/    ci.yml, train-self-hosted.yml
 data/  models/  mlruns/   ← git-ignored, never committed
 ```
