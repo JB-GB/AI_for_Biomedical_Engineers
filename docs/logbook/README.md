@@ -14,3 +14,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | Date | Entry | Milestone | Type |
 |---|---|---|---|
 | 2026-11-11 | [Project kickoff & feasibility](2026-11-11_M0-T0.1_project-kickoff.md) | M0 | Decision |
+| 2026-11-11 | [Team decisions & architecture choice](2026-11-11_M0-T0.3_team-decisions.md) | M0 | Decision |
