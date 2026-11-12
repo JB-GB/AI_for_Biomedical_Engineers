@@ -15,3 +15,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 |---|---|---|---|
 | 2026-11-11 | [Project kickoff & feasibility](2026-11-11_M0-T0.1_project-kickoff.md) | M0 | Decision |
 | 2026-11-11 | [Team decisions & architecture choice](2026-11-11_M0-T0.3_team-decisions.md) | M0 | Decision |
+| 2026-11-11 | [Synthetic joint US generator](2026-11-11_M1-T1.7_synthetic-generator.md) | M1 | Result |
