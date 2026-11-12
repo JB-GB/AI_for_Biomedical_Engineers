@@ -12,3 +12,7 @@ Status: `[ ]` not yet read · `[x]` read and verified (add full citation).
 - [ ] Advances in musculoskeletal US in the diagnosis of RA: a review. IJGM. https://pmc.ncbi.nlm.nih.gov/articles/PMC13248967/
 - [ ] Aletaha D et al. 2010 ACR/EULAR classification criteria for RA. (diagnostic context)
 - [ ] Selvaraju RR et al. Grad-CAM. ICCV 2017. (explainability)
+- [ ] Ritsche P, Cronin NJ et al. UMUD: a web application for easy access to musculoskeletal ultrasonography datasets. BMC Medical Imaging, 2026. https://eprints.glos.ac.uk/15848/ (pre-training data index, stage S1)
+- [ ] deepMTJ: muscle-tendon junction US dataset, CC BY 4.0. https://astro.paperswithcode.com/dataset/deepmtj
+- [ ] Megahed et al. USF-MAE: Ultrasound self-supervised foundation model with masked autoencoding. arXiv 2510.22990, 2025. https://arxiv.org/abs/2510.22990v2 (stage S0 weights)
+- [ ] Zheng et al. OpenUS: fully open-source foundation model for ultrasound. arXiv 2511.11510, 2025. https://arxiv.org/html/2511.11510v1
