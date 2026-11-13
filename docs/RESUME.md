@@ -1,6 +1,6 @@
 # Where we left off — resume guide
 
-**Last update:** 2026-11-13 · **Branch:** `PIA_devl` · **Next milestone:** M4 (model improvement) / M7 (runtimes)
+**Last update:** 2026-11-13 · **Branch:** `PIA_devl` · **Next milestone:** first Colab/runner runs (M7) · rest of M4 · M6 leftovers
 
 ## 1. Status at a glance
 
@@ -10,26 +10,24 @@
 | M1 Data | 🟡 Synthetic generator (S2) done · public MSK data (S1) and hospital data (S3) pending |
 | M2 Data pipeline | 🟡 Manifest + patient-level split done · de-identification, EDA pending |
 | M3 Baseline model | ✅ Synthetic baseline trained: test combined QWK 0.908 (logbook M3-T3.2) · MLflow pending |
-| M4 Model improvement | 🟡 Grad-CAM + temperature scaling done (logbook M4-T4.4) · PD-loss masking, augmentations, backbones pending |
+| M4 Model improvement | 🟡 Grad-CAM + temperature scaling (M4-T4.4) · GS0 → PD0 rule + PD masking, v0004 (M4-T4.1) · augmentations, backbones, referral threshold pending |
 | M5 Retraining loop | ✅ `rausnet.retrain` + registry + paired-bootstrap promotion (logbook M5) |
 | M6 Product | ✅ ONNX export, FastAPI, PySide6 app (logbook M6) · PDF report, installer, usability test pending |
-| M7–M8 | ⏳ Not started |
+| M7 Runtimes | 🟡 setup script, resumable training, Colab notebook, CI + self-hosted workflow, CPU≡GPU check (logbook M7) · first Colab and runner runs pending |
+| M8 Paper | ⏳ Not started |
 
-Code that exists and passes tests (106 tests):
+Code that exists and passes tests (112 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
 `registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`,
-plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`, `scripts/analyze_cam.py`.
+plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`, `scripts/analyze_cam.py`, `scripts/setup_env.py`,
+`scripts/compare_runs.py`, `notebooks/colab_train.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
 
 ## 2. Set up the machine again (needs internet once)
 
 ```bash
-git config core.hooksPath .githooks
-py -3.11 -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"
-.venv/Scripts/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-.venv/Scripts/python -m pip install "timm>=1.0" "pyyaml>=6.0" "matplotlib>=3.8"
-.venv/Scripts/python -m pip install -e ".[serve,ui]" onnx onnxscript
+py -3.11 scripts/setup_env.py          # venv + CUDA torch + all extras + commit hook (--cpu without GPU)
+.venv/Scripts/python -m pip install onnxscript   # only for ONNX export
 .venv/Scripts/python -m pytest
 ```
 If `.venv` still exists, skip the installs. Pretrained EfficientNet-B0 weights are
@@ -46,10 +44,12 @@ Then set `RAUSNET_DATA_DIR=J:/rausnet_data` before training.
 ## 3. Exactly where it stopped
 
 - M3 baseline done (test combined QWK 0.908). M5 retraining loop done and demonstrated.
-- Local registry `models/registry.json` (git-ignored): `v0001` archived, `v0002` rejected
-  (old tolerance-0 rule), **`v0003` current** (synthetic + batch_001; paired bootstrap diff −0.004,
-  95 % CI [−0.015, +0.004] → promoted).
-- Data root `J:/rausnet_data`: `synth/`, `incoming/batch_001/`, `datasets/v0001`–`v0003`.
+- Local registry `models/registry.json` (git-ignored): `v0001`, `v0003` archived, `v0002` rejected
+  (old tolerance-0 rule), **`v0004` current** (+ batch_002, PD masking; test combined QWK 0.945,
+  +0.041 [+0.008, +0.090] vs v0003). v0004 is calibrated and exported (`model.onnx`).
+- Data root `J:/rausnet_data`: `synth/`, `incoming/batch_001/`, `incoming/batch_002/`, `datasets/v0001`–`v0004`.
+- M7 built but not yet run outside this laptop: Colab notebook and self-hosted runner (setup steps in
+  `docs/03_colab_and_runners.md` §2–3). CI (`ci.yml`) runs on the next push.
 - Promotion rule decided: paired bootstrap (logbook M5-T5.3). Metrics now carry 95 % CIs.
 
 How to retrain with new data (e.g. hospital batch already de-identified, with a manifest):
@@ -69,11 +69,11 @@ Use the app (after each promotion: calibrate, then export):
 .venv/Scripts/rausnet-api --port 8000           # API only (http://127.0.0.1:8000/docs)
 ```
 
-1. [ ] **M4 rest** mask PD loss on GS0 images (main PD error source, logbook M4-T4.4),
-   US-style augmentations, backbone comparison, "refer to specialist" confidence threshold.
-2. [ ] **M7** Colab notebook + self-hosted runner workflow (`docs/03_colab_and_runners.md`).
+1. [ ] **M7 first runs** Colab (free T4) and self-hosted runner; compare with `scripts/compare_runs.py`; check first CI run.
+2. [ ] **M4 rest** US-style augmentations, backbone comparison, "refer to specialist" threshold,
+   calibration gating (temperature did not help v0004, logbook M4-T4.1).
 3. [ ] **M6 leftovers** PDF report, PyInstaller installer, Docker image for the API, SUS usability test.
-4. [ ] Auto calibrate + export ONNX after a promotion in `rausnet.retrain`.
+4. [ ] Auto calibrate + export ONNX after a promotion in `rausnet.retrain` (the runner workflow already does it).
 5. [ ] **S1** download selected UMUD datasets, log licences.
 6. [ ] T3.4 MLflow tracking (optional).
 
