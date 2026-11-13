@@ -18,3 +18,10 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 Extras: `train` (PyTorch), `serve` (FastAPI + ONNX Runtime), `ui` (PySide6 desktop).
+
+### Use the desktop app
+```bash
+.venv/Scripts/python -m pip install -e ".[serve,ui]"
+.venv/Scripts/python -m rausnet.export      # once per promoted model
+.venv/Scripts/rausnet-desktop               # Spanish UI; --lang en for English
+```
