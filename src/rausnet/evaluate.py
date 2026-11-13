@@ -13,7 +13,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from rausnet.metrics import bootstrap_ci, classification_report, combined_probabilities
+from rausnet.metrics import (
+    bootstrap_ci,
+    classification_report,
+    combined_probabilities,
+    consistent_pd_probabilities,
+)
 
 
 @torch.no_grad()
@@ -38,7 +43,11 @@ def combined_labels(y_gs: np.ndarray, y_pd: np.ndarray) -> np.ndarray:
 
 
 def evaluate_predictions(p_gs, p_pd, y_gs, y_pd) -> dict:
-    """Reports for GS head, PD head (labelled rows only) and the combined grade."""
+    """Reports for GS head, PD grade (labelled rows only) and the combined grade.
+
+    ``pd`` applies the GS-0 -> PD-0 rule (``consistent_pd_probabilities``); ``pd_raw`` is the
+    bare PD head, kept for comparison with models trained before PD masking.
+    """
     has_pd = y_pd >= 0
     p_comb = combined_probabilities(p_gs, p_pd)
     y_comb = combined_labels(y_gs, y_pd)
@@ -47,7 +56,9 @@ def evaluate_predictions(p_gs, p_pd, y_gs, y_pd) -> dict:
         "combined": classification_report(y_comb, p_comb),
     }
     if has_pd.any():
-        report["pd"] = classification_report(y_pd[has_pd], p_pd[has_pd])
+        p_pd_rule = consistent_pd_probabilities(p_gs, p_pd)
+        report["pd"] = classification_report(y_pd[has_pd], p_pd_rule[has_pd])
+        report["pd_raw"] = classification_report(y_pd[has_pd], p_pd[has_pd])
     return report
 
 
