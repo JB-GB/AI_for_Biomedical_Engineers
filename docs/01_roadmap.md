@@ -92,10 +92,10 @@ gantt
 - T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap).
 
 ### M5 — Retraining loop
-- T5.1 `data/incoming/` drop-zone + validation of new labelled entries.
-- T5.2 `retrain` command: merges data, fine-tunes from last checkpoint, evaluates on the **frozen** test set.
-- T5.3 Promotion rule: new model replaces current only if test metrics do not degrade.
-- T5.4 Model registry (`models/registry.json`: version, data hash, metrics, date).
+- T5.1 `data/incoming/` drop-zone + validation of new labelled entries. ✅
+- T5.2 `retrain` command: merges data, fine-tunes from last checkpoint, evaluates on the **frozen** test set. ✅
+- T5.3 Promotion rule: new model replaces current only if test metrics do not degrade. ✅
+- T5.4 Model registry (`models/registry.json`: version, data hash, metrics, date). ✅
 
 ### M6 — GUI for non-technical users
 - T6.1 Wireframe: load image → result (grade, confidence, heat-map) → export PDF report.
