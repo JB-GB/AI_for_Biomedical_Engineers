@@ -8,7 +8,7 @@ pytest.importorskip("timm")
 
 from rausnet.data.synthetic import generate_dataset
 from rausnet.registry import Registry
-from rausnet.retrain import promotion_decision, retrain
+from rausnet.retrain import bootstrap_decision, promotion_decision, retrain
 from rausnet.train import load_config
 
 
@@ -24,6 +24,15 @@ def test_promotion_rule():
     assert not promotion_decision(rep(math.nan), rep(0.80))[0]
 
 
+def test_bootstrap_decision():
+    assert bootstrap_decision(None) == (True, "first model")
+    noise = {"a": 0.90, "b": 0.89, "diff": -0.01, "ci_low": -0.05, "ci_high": 0.03}
+    worse = {"a": 0.90, "b": 0.70, "diff": -0.20, "ci_low": -0.30, "ci_high": -0.10}
+    assert bootstrap_decision(noise)[0]
+    assert not bootstrap_decision(worse)[0]
+    assert not bootstrap_decision({**noise, "b": math.nan})[0]
+
+
 def test_retrain_lifecycle(tmp_path):
     root = tmp_path / "data"
     for name, seed, n in (("synthA", 1, 20), ("synthB", 2, 8), ("synthC", 3, 8)):
@@ -34,7 +43,8 @@ def test_retrain_lifecycle(tmp_path):
             f"data.root={root.as_posix()}", "data.image_size=64", "model.backbone=resnet18",
             "model.pretrained=false", "train.epochs=1", "train.finetune_epochs=1", "train.batch_size=16",
             "train.amp=false", f"output_dir={(tmp_path / 'out').as_posix()}",
-            f"models_dir={(tmp_path / 'models').as_posix()}", f"promotion.tolerance={tolerance}",
+            f"models_dir={(tmp_path / 'models').as_posix()}", "promotion.rule=tolerance",
+            f"promotion.tolerance={tolerance}", "promotion.n_boot=50",
         ])
 
     first = retrain(cfg(0.0), ["synthA/manifest.csv"])
@@ -51,6 +61,8 @@ def test_retrain_lifecycle(tmp_path):
     assert (tmp_path / "models/v0002/model.pt").exists()
     report = json.loads((tmp_path / "models/v0003/retrain_report.json").read_text())
     assert report["parent"] == "v0002" and report["new_images"] == 48 and report["current"] is not None
+    assert report["paired_bootstrap"]["n_groups"] == report["candidate"]["n_patients"]
+    assert len(report["candidate"]["combined"]["qwk_ci95"]) == 2
 
     with pytest.raises(ValueError, match="no new images"):
         retrain(cfg(0.0), ["synthA/manifest.csv"])

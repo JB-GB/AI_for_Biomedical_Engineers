@@ -28,6 +28,12 @@ train:
   seed: 42
 
 promotion:
-  metric: qwk                # combined-grade metric compared on the same frozen test split
-  tolerance: 0.0             # candidate >= current - tolerance -> promoted
+  rule: bootstrap            # bootstrap | tolerance
+  # bootstrap: paired patient-level bootstrap of (candidate - current) combined QWK on the same
+  # frozen test split; rejected only if the whole 95 % CI is below 0 (significantly worse).
+  n_boot: 2000
+  seed: 0
+  # tolerance: promoted if candidate metric >= current - tolerance.
+  metric: qwk
+  tolerance: 0.0
   sources: null              # e.g. [hospital] to judge only on clinical test images

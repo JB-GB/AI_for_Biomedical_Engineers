@@ -8,7 +8,10 @@ Steps:
 2. Fine-tune from the current model (or train from scratch if none exists).
 3. Evaluate candidate and current model on the SAME frozen test split
    (hash-based patient split; existing test patients never move).
-4. Promote the candidate only if its metric does not drop below current - tolerance.
+4. Promotion rule (``promotion.rule``):
+   - ``bootstrap`` (default): paired patient-level bootstrap of candidate - current
+     combined QWK; reject only if the whole 95 % CI is below 0 (significantly worse).
+   - ``tolerance``: promote if candidate >= current - tolerance.
 5. Register the version (current / rejected) with a retrain report.
 """
 
@@ -25,7 +28,8 @@ from pathlib import Path
 
 from rausnet.data.manifest import read_manifest
 from rausnet.data.merge import load_source, merge_records, write_dataset
-from rausnet.evaluate import evaluate_checkpoint
+from rausnet.evaluate import combined_labels, evaluate_predictions, predict_checkpoint
+from rausnet.metrics import bootstrap_ci, combined_probabilities, paired_bootstrap
 from rausnet.registry import ModelEntry, Registry
 from rausnet.train import load_config, train
 
@@ -47,6 +51,28 @@ def promotion_decision(candidate: dict, current: dict | None, metric: str = "qwk
     if cand >= cur - tolerance:
         return True, f"candidate {metric} {cand:.4f} >= current {cur:.4f} - {tolerance}"
     return False, f"candidate {metric} {cand:.4f} < current {cur:.4f} - {tolerance}"
+
+
+def bootstrap_decision(boot: dict | None) -> tuple[bool, str]:
+    """Promote unless the candidate is significantly worse (CI of the difference entirely < 0)."""
+    if boot is None:
+        return True, "first model"
+    if math.isnan(boot["b"]):
+        return False, "candidate qwk is undefined"
+    ci = f"diff {boot['diff']:+.4f}, 95% CI [{boot['ci_low']:+.4f}, {boot['ci_high']:+.4f}]"
+    if boot["ci_high"] < 0:
+        return False, f"candidate significantly worse ({ci})"
+    return True, f"candidate not significantly worse ({ci})"
+
+
+def _report(records, preds, n_boot: int, seed: int) -> dict:
+    report = evaluate_predictions(*preds)
+    y = combined_labels(preds[2], preds[3])
+    y_hat = combined_probabilities(preds[0], preds[1]).argmax(axis=1)
+    report["combined"]["qwk_ci95"] = bootstrap_ci(y, y_hat, [r.patient_id for r in records],
+                                                  n_boot=n_boot, seed=seed)
+    report["n_patients"] = len({r.patient_id for r in records})
+    return report
 
 
 def dataset_stage(records) -> str:
@@ -97,10 +123,26 @@ def retrain(cfg: dict, add: list[str]) -> ModelEntry:
 
     promo = cfg.get("promotion", {})
     sources = promo.get("sources")
-    cand_report = evaluate_checkpoint(run_dir / "model.pt", run_cfg, "test", sources)
-    cur_report = evaluate_checkpoint(cur_ckpt, run_cfg, "test", sources) if cur else None
-    promote, reason = promotion_decision(cand_report, cur_report, promo.get("metric", "qwk"),
-                                         promo.get("tolerance", 0.0))
+    n_boot, seed = promo.get("n_boot", 2000), promo.get("seed", 0)
+    recs, cand_preds = predict_checkpoint(run_dir / "model.pt", run_cfg, "test", sources)
+    cand_report = _report(recs, cand_preds, n_boot, seed)
+    cur_report = boot = None
+    if cur:
+        _, cur_preds = predict_checkpoint(cur_ckpt, run_cfg, "test", sources)
+        cur_report = _report(recs, cur_preds, n_boot, seed)
+        y = combined_labels(cand_preds[2], cand_preds[3])
+        boot = paired_bootstrap(
+            y, combined_probabilities(*cur_preds[:2]).argmax(1), combined_probabilities(*cand_preds[:2]).argmax(1),
+            [r.patient_id for r in recs], n_boot=n_boot, seed=seed,
+        )
+    rule = promo.get("rule", "bootstrap")
+    if rule == "bootstrap":
+        promote, reason = bootstrap_decision(boot)
+    elif rule == "tolerance":
+        promote, reason = promotion_decision(cand_report, cur_report, promo.get("metric", "qwk"),
+                                             promo.get("tolerance", 0.0))
+    else:
+        raise ValueError(f"unknown promotion rule {rule!r}")
 
     vdir = reg.dir / version
     vdir.mkdir(parents=True, exist_ok=False)
@@ -111,7 +153,7 @@ def retrain(cfg: dict, add: list[str]) -> ModelEntry:
         "version": version, "parent": cur.version if cur else None, "run_dir": str(run_dir),
         "dataset_manifest": manifest_rel, "images": len(combined), "new_images": len(combined) - len(previous),
         "promotion_rule": promo, "promoted": promote, "reason": reason,
-        "candidate": cand_report, "current": cur_report,
+        "paired_bootstrap": boot, "candidate": cand_report, "current": cur_report,
     }
     (vdir / "retrain_report.json").write_text(json.dumps(report, indent=2))
 
