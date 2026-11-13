@@ -11,10 +11,10 @@
 | M2 Data pipeline | 🟡 Manifest + patient-level split done · de-identification, EDA pending |
 | M3 Baseline model | ✅ Synthetic baseline trained: test combined QWK 0.908 (logbook M3-T3.2) · MLflow pending |
 | M4 | ⏳ Not started |
-| M5 Retraining loop | ✅ `rausnet.retrain` + registry + promotion rule (logbook M5) |
+| M5 Retraining loop | ✅ `rausnet.retrain` + registry + paired-bootstrap promotion (logbook M5) |
 | M6–M8 | ⏳ Not started |
 
-Code that exists and passes tests (73 tests):
+Code that exists and passes tests (76 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
 `registry.py`, plus `scripts/make_figures.py`.
@@ -43,10 +43,11 @@ Then set `RAUSNET_DATA_DIR=J:/rausnet_data` before training.
 ## 3. Exactly where it stopped
 
 - M3 baseline done (test combined QWK 0.908). M5 retraining loop done and demonstrated.
-- Local registry `models/registry.json` (git-ignored): `v0001` current (synthetic, 1 200 img),
-  `v0002` rejected (QWK 0.894 vs 0.898 on the same 240-image test split — a 3-image difference).
-- Data root `J:/rausnet_data`: `synth/`, `incoming/batch_001/`, `datasets/v0001`, `datasets/v0002`.
-- Open decision: refine the promotion rule (paired bootstrap CI vs small tolerance), see logbook M5.
+- Local registry `models/registry.json` (git-ignored): `v0001` archived, `v0002` rejected
+  (old tolerance-0 rule), **`v0003` current** (synthetic + batch_001; paired bootstrap diff −0.004,
+  95 % CI [−0.015, +0.004] → promoted).
+- Data root `J:/rausnet_data`: `synth/`, `incoming/batch_001/`, `datasets/v0001`–`v0003`.
+- Promotion rule decided: paired bootstrap (logbook M5-T5.3). Metrics now carry 95 % CIs.
 
 How to retrain with new data (e.g. hospital batch already de-identified, with a manifest):
 ```bash
@@ -60,11 +61,10 @@ export RAUSNET_DATA_DIR=J:/rausnet_data
 1. [ ] **M6** ONNX export of the registry `current` model with JSON sidecar → FastAPI inference
    service → PySide6 desktop client ("not clinically validated" banner, "submit correction"
    button writing to `incoming/`).
-2. [ ] Promotion rule refinement (paired bootstrap over test patients).
-3. [ ] **M4** Grad-CAM on PD false positives; US-style augmentations; backbone comparison.
-4. [ ] **M7** Colab notebook + self-hosted runner workflow (`docs/03_colab_and_runners.md`).
-5. [ ] **S1** download selected UMUD datasets, log licences.
-6. [ ] T3.4 MLflow tracking (optional).
+2. [ ] **M4** Grad-CAM on PD false positives; US-style augmentations; backbone comparison.
+3. [ ] **M7** Colab notebook + self-hosted runner workflow (`docs/03_colab_and_runners.md`).
+4. [ ] **S1** download selected UMUD datasets, log licences.
+5. [ ] T3.4 MLflow tracking (optional).
 
 ## 5. Reminders
 - Commits: `[Type] [scope] : description`, body ≤ 25 words, English, **no co-author trailers** (hook enforces).
