@@ -39,6 +39,8 @@ def test_predictor_matches_torch(synth_small, onnx_model):
         lg, _ = net(load_input(synth / r.gs_path, synth / r.pd_path, 64)[None])
     assert np.allclose(out["gs"]["probabilities"], lg.softmax(1)[0].numpy(), atol=1e-3)
     assert sum(out["combined"]["probabilities"]) == pytest.approx(1, abs=1e-3)
+    assert sum(out["pd"]["probabilities"]) == pytest.approx(1, abs=1e-3)
+    assert out["pd"]["probabilities"][0] >= out["gs"]["probabilities"][0] - 1e-3  # GS0 mass goes to PD0
     assert any("not clinically validated" in w for w in out["warnings"])
 
 

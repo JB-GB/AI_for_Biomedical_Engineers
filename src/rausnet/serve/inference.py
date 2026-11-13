@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 
 from rausnet.heatmap import normalize_cam, overlay
-from rausnet.metrics import combined_probabilities
+from rausnet.metrics import combined_probabilities, consistent_pd_probabilities
 
 ImageInput = str | Path | bytes | Image.Image | np.ndarray
 
@@ -100,6 +100,7 @@ class Predictor:
         temp = self.info.get("temperature", {"gs": 1.0, "pd": 1.0})
         p_gs, p_pd = _softmax(outs[0] / temp["gs"]), _softmax(outs[1] / temp["pd"])
         p_comb = combined_probabilities(p_gs, p_pd)
+        p_pd = consistent_pd_probabilities(p_gs, p_pd)  # PD > 0 requires synovium (GS > 0)
         codes = []
         if not self.info.get("clinically_validated", False):
             codes.append("not_validated")
