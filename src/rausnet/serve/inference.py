@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from rausnet.heatmap import normalize_cam, overlay
 from rausnet.metrics import combined_probabilities
 
 ImageInput = str | Path | bytes | Image.Image | np.ndarray
@@ -87,18 +88,24 @@ class Predictor:
         providers = [p for p in wanted if p in ort.get_available_providers()]
         self.session = ort.InferenceSession(str(self.dir / "model.onnx"), providers=providers)
 
-    def predict(self, gs: ImageInput, pd: ImageInput | None = None) -> dict:
+    def predict(self, gs: ImageInput, pd: ImageInput | None = None, explain: bool = False) -> dict:
+        """Grade one image pair. Probabilities are temperature-calibrated when the sidecar has
+        temperatures. With ``explain`` and a CAM-enabled model, ``heatmaps`` holds uint8 RGB
+        overlays (Grad-CAM of the predicted grade) on the GS and PD images."""
         spec = self.info["input"]
-        x = preprocess(gs, pd, spec["size"], spec["mean"], spec["std"])
-        lg, lp = self.session.run(None, {spec["name"]: x})
-        p_gs, p_pd = _softmax(lg), _softmax(lp)
+        gs_img = _open(gs)
+        pd_img = _open(pd) if pd is not None else None
+        x = preprocess(gs_img, pd_img, spec["size"], spec["mean"], spec["std"])
+        outs = self.session.run(None, {spec["name"]: x})
+        temp = self.info.get("temperature", {"gs": 1.0, "pd": 1.0})
+        p_gs, p_pd = _softmax(outs[0] / temp["gs"]), _softmax(outs[1] / temp["pd"])
         p_comb = combined_probabilities(p_gs, p_pd)
         codes = []
         if not self.info.get("clinically_validated", False):
             codes.append("not_validated")
         if pd is None:
             codes.append("no_pd")
-        return {
+        result = {
             "model_version": self.info["version"],
             "stage": self.info["stage"],
             "gs": {"grade": int(p_gs[0].argmax()), "probabilities": _round(p_gs[0])},
@@ -107,4 +114,13 @@ class Predictor:
                          "confidence": round(float(p_comb[0].max()), 4)},
             "warnings": [WARNINGS[c] for c in codes],
             "warning_codes": codes,
+            "calibrated": "temperature" in self.info,
         }
+        if explain and len(outs) == 4:
+            gs_base = np.asarray(gs_img.convert("L"))
+            pd_base = np.asarray(pd_img.convert("RGB")) if pd_img is not None else gs_base
+            result["heatmaps"] = {
+                "gs": overlay(gs_base, normalize_cam(outs[2][0, result["gs"]["grade"]])),
+                "pd": overlay(pd_base, normalize_cam(outs[3][0, result["pd"]["grade"]])),
+            }
+        return result

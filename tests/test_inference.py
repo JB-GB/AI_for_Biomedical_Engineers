@@ -48,3 +48,22 @@ def test_size_mismatch_rejected(synth_small):
     small = np.zeros((10, 10, 3), np.uint8)
     with pytest.raises(ValueError, match="same size"):
         preprocess(synth / r.gs_path, small, 64, MEAN, STD)
+
+
+def test_predictor_heatmaps_and_temperature(synth_small, onnx_model, tmp_path):
+    import json
+    import shutil
+
+    d, _ = onnx_model
+    r = read_manifest(synth_small / "manifest.csv")[0]
+    out = Predictor(d).predict(synth_small / r.gs_path, synth_small / r.pd_path, explain=True)
+    assert out["heatmaps"]["gs"].shape == (96, 96, 3) and out["heatmaps"]["pd"].dtype == np.uint8
+
+    hot = tmp_path / "hot"
+    shutil.copytree(d, hot)
+    info = json.loads((hot / "model.json").read_text())
+    info["temperature"] = {"gs": 100.0, "pd": 100.0}  # extreme T -> near-uniform probabilities
+    (hot / "model.json").write_text(json.dumps(info))
+    flat = Predictor(hot).predict(synth_small / r.gs_path, synth_small / r.pd_path)
+    assert max(flat["gs"]["probabilities"]) < 0.3 and flat["calibrated"]
+    assert flat["gs"]["grade"] == Predictor(d).predict(synth_small / r.gs_path, synth_small / r.pd_path)["gs"]["grade"]

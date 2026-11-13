@@ -68,3 +68,19 @@ def test_corrections_disabled_without_data_dir(onnx_model, synth_small):
     c = TestClient(create_app(onnx_model[0]))
     form = {"patient_id": "H1", "joint": "MCP2", "side": "L", "gs_grade": "1", "pd_grade": "0"}
     assert c.post("/corrections", files=files(synth_small), data=form).status_code == 503
+
+
+def test_predict_with_heatmaps(client, synth_small):
+    import base64
+    import io
+
+    from PIL import Image
+
+    c, _ = client
+    body = c.post("/predict", params={"explain": "true"}, files=files(synth_small)).json()
+    for key in ("gs", "pd"):
+        url = body["heatmaps"][key]
+        assert url.startswith("data:image/png;base64,")
+        img = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1])))
+        assert img.size == (96, 96) and img.mode == "RGB"
+    assert "heatmaps" not in c.post("/predict", files=files(synth_small)).json()

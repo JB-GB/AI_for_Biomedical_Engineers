@@ -8,7 +8,8 @@ Without ``--model-dir`` the current model of the registry in ``models/`` is serv
 Endpoints:
     GET  /health       liveness
     GET  /model        model sidecar (version, stage, validation status, metrics)
-    POST /predict      multipart: gs (required), pd (optional) -> grades and probabilities
+    POST /predict      multipart: gs (required), pd (optional) -> grades and probabilities;
+                       ?explain=true adds Grad-CAM overlays as base64 PNG data URLs
     POST /corrections  multipart: gs, pd, patient_id, joint, side, gs_grade, pd_grade
                        -> stored in <data_dir>/incoming/corrections/<date>/ for the next retrain
 """
@@ -16,6 +17,7 @@ Endpoints:
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import io
 import os
@@ -61,6 +63,12 @@ async def _read_image(upload: UploadFile, field: str) -> Image.Image:
     return img
 
 
+def _png_data_url(rgb) -> str:
+    buf = io.BytesIO()
+    Image.fromarray(rgb).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def create_app(model_dir: str | Path, data_dir: str | Path | None = None) -> FastAPI:
     predictor = Predictor(model_dir)
     lock = threading.Lock()
@@ -76,13 +84,16 @@ def create_app(model_dir: str | Path, data_dir: str | Path | None = None) -> Fas
         return predictor.info
 
     @app.post("/predict")
-    async def predict(gs: UploadFile = File(...), pd: UploadFile | None = File(None)):
+    async def predict(gs: UploadFile = File(...), pd: UploadFile | None = File(None), explain: bool = False):
         gs_img = await _read_image(gs, "gs")
         pd_img = await _read_image(pd, "pd") if pd is not None else None
         try:
-            return predictor.predict(gs_img, pd_img)
+            result = predictor.predict(gs_img, pd_img, explain=explain)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        if "heatmaps" in result:
+            result["heatmaps"] = {k: _png_data_url(v) for k, v in result["heatmaps"].items()}
+        return result
 
     @app.post("/corrections")
     async def corrections(
