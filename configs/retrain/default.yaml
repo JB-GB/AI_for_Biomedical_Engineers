@@ -22,6 +22,7 @@ train:
   finetune_lr: 1.0e-4
   weight_decay: 1.0e-4
   class_weighting: true
+  pd_mask_gs0: true       # no PD loss on GS 0 joints: PD is undefined without synovium
   amp: true
   num_workers: 0
   patience: 8

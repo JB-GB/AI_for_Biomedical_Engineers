@@ -99,6 +99,16 @@ def build_loaders(cfg: dict):
     return loaders, splits
 
 
+def pd_target(gs: int, pd: int, mask_gs0: bool) -> int:
+    """PD training label; ignored on GS 0 joints when ``mask_gs0`` (no synovium, PD undefined)."""
+    return IGNORE_INDEX if mask_gs0 and gs == 0 else pd
+
+
+def mask_pd_targets(gs: torch.Tensor, pd: torch.Tensor) -> torch.Tensor:
+    """Batch version of ``pd_target`` with masking on."""
+    return torch.where(gs == 0, torch.full_like(pd, IGNORE_INDEX), pd)
+
+
 def class_weights(labels: list[int], enabled: bool) -> torch.Tensor:
     counts = np.bincount([y for y in labels if y >= 0], minlength=4).astype(float)
     if not enabled:
@@ -128,8 +138,9 @@ def train(cfg: dict) -> Path:
 
     train_recs = splits["train"]
     w_gs = class_weights([r.gs_grade for r in train_recs], t["class_weighting"]).to(device)
-    w_pd = class_weights([r.pd_grade if r.pd_path else IGNORE_INDEX for r in train_recs],
-                         t["class_weighting"]).to(device)
+    mask_gs0 = t.get("pd_mask_gs0", False)
+    w_pd = class_weights([pd_target(r.gs_grade, r.pd_grade if r.pd_path else IGNORE_INDEX, mask_gs0)
+                          for r in train_recs], t["class_weighting"]).to(device)
     loss_gs = nn.CrossEntropyLoss(weight=w_gs)
     loss_pd = nn.CrossEntropyLoss(weight=w_pd, ignore_index=IGNORE_INDEX)
     opt = torch.optim.AdamW(model.parameters(), lr=t["lr"], weight_decay=t["weight_decay"])
@@ -148,6 +159,8 @@ def train(cfg: dict) -> Path:
         t0, total, n = time.time(), 0.0, 0
         for x, gs, pd in loaders["train"]:
             x, gs, pd = x.to(device, non_blocking=True), gs.to(device), pd.to(device)
+            if mask_gs0:
+                pd = mask_pd_targets(gs, pd)
             with torch.autocast(device.type, enabled=amp):
                 lg, lp = model(x)
                 loss = loss_gs(lg.float(), gs)

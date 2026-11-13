@@ -21,6 +21,7 @@ train:
   lr: 3.0e-4
   weight_decay: 1.0e-4
   class_weighting: true
+  pd_mask_gs0: true       # no PD loss on GS 0 joints: PD is undefined without synovium
   amp: true
   num_workers: 0          # >0 on Windows hit WinError 1455 (page file); see RESUME.md
   patience: 8

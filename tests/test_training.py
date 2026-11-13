@@ -9,7 +9,7 @@ from rausnet.data.dataset import IGNORE_INDEX, JointDataset, load_input  # noqa:
 from rausnet.data.manifest import read_manifest  # noqa: E402
 from rausnet.data.synthetic import generate_dataset  # noqa: E402
 from rausnet.models import GradingNet  # noqa: E402
-from rausnet.train import load_config, train  # noqa: E402
+from rausnet.train import load_config, mask_pd_targets, pd_target, train  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -34,6 +34,15 @@ def test_missing_pd_uses_gs_and_ignore_label(synth):
     x, _, pd = JointDataset([r], synth, size=32)[0]
     assert pd == IGNORE_INDEX
     assert torch.allclose(x[1], x[0]) and torch.allclose(x[3], x[0])
+
+
+
+def test_pd_masking_on_gs0():
+    assert pd_target(0, 2, mask_gs0=True) == IGNORE_INDEX
+    assert pd_target(0, 2, mask_gs0=False) == 2
+    assert pd_target(1, 2, mask_gs0=True) == 2
+    gs, pd = torch.tensor([0, 1, 0, 3]), torch.tensor([0, 2, IGNORE_INDEX, 3])
+    assert mask_pd_targets(gs, pd).tolist() == [IGNORE_INDEX, 2, IGNORE_INDEX, 3]
 
 
 def test_load_input_shape(synth):

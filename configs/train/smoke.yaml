@@ -21,6 +21,7 @@ train:
   lr: 1.0e-3
   weight_decay: 1.0e-4
   class_weighting: true
+  pd_mask_gs0: true
   amp: true
   num_workers: 0
   patience: 5
