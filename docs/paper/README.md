@@ -32,6 +32,9 @@ All with 95 % bootstrap CIs, patient-level.
 - [ ] System architecture diagram
 - [ ] Dataset flow (CONSORT-style: patients → images → splits)
 - [x] Example synthetic images per grade (`figures/synthetic_examples.png`)
+- [x] Grad-CAM examples, synthetic (`figures/gradcam_examples.png`; rows: 2 correct GS1/PD1, 2 PD false positives; cols: GS, GS-CAM, PD, PD-CAM)
+- [x] Reliability diagram (`figures/calibration_v0003.png`)
+- [x] App with heat map (`figures/gui_desktop_gradcam.png`)
 - [ ] Real example images per grade + Grad-CAM
 - [x] Confusion matrix + training curves, synthetic baseline (`figures/baseline_s2_*.png`)
 - [ ] Confusion matrix, ROC on clinical data

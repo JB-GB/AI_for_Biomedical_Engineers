@@ -1,6 +1,7 @@
 """Render the desktop app end to end (local API + current model) and save a screenshot.
 
 Usage: python scripts/gui_screenshot.py GS_IMAGE [PD_IMAGE] [--out docs/paper/figures/gui_desktop.png] [--lang es]
+       [--heatmap]
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ def main(argv=None) -> None:
     parser.add_argument("--out", default="docs/paper/figures/gui_desktop.png")
     parser.add_argument("--models-dir", default="models")
     parser.add_argument("--lang", default="es")
+    parser.add_argument("--heatmap", action="store_true", help="show the Grad-CAM overlay")
     args = parser.parse_args(argv)
 
     app = QApplication([])
@@ -28,6 +30,7 @@ def main(argv=None) -> None:
     window.pd_panel.set_path(args.pd)
     result = window.analyze()
     window.patient.setText("HOSP-0001")
+    window.heatmap_box.setChecked(args.heatmap)
     window.resize(1100, 720)
     app.processEvents()
     # grab() renders without showing the window; native platform keeps system fonts.
