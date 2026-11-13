@@ -20,3 +20,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-13 | [Baseline results on synthetic data](2026-11-13_M3-T3.2_baseline-results.md) | M3 | Result |
 | 2026-11-13 | [Retraining loop with promotion rule](2026-11-13_M5-T5.2_retraining-loop.md) | M5 | Result |
 | 2026-11-13 | [Paired bootstrap promotion & CIs](2026-11-13_M5-T5.3_bootstrap-promotion.md) | M5 | Decision |
+| 2026-11-13 | [ONNX export, API and desktop client](2026-11-13_M6-T6.2_onnx-api-desktop.md) | M6 | Result |
