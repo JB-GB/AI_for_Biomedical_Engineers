@@ -1,6 +1,7 @@
 """Paper figures for a training run: combined-grade confusion matrix and training curves.
 
 Usage: python scripts/make_figures.py outputs/<run_dir> [--out docs/paper/figures] [--prefix baseline_s2]
+       python scripts/make_figures.py --calibration models/<version>/calibration.json
 Requires the ``paper`` extra (matplotlib).
 """
 
@@ -84,14 +85,45 @@ def curves_figure(history: list[dict], best_epoch: int, path: Path) -> None:
     plt.close(fig)
 
 
+def calibration_figure(calib: dict, path: Path) -> None:
+    """Reliability diagram of the combined grade on the test split, before vs after scaling."""
+    fig, ax = plt.subplots(figsize=(4.4, 4.8))
+    ax.plot([0, 1], [0, 1], color=GRID, lw=1.5, zorder=1)
+    t = calib["temperature"]
+    labels = (("before", "Uncalibrated"), ("after", f"Scaled (T_GS {t['gs']:.2f}, T_PD {t['pd']:.2f})"))
+    for (key, label), color in zip(labels, SERIES, strict=False):
+        part = calib["test"][key]["combined"]
+        bins = part["bins"]
+        ax.plot([b["confidence"] for b in bins], [b["accuracy"] for b in bins], color=color, lw=2, marker="o",
+                ms=6, label=f"{label}\nECE {part['ece']:.3f}", zorder=2)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel("Mean confidence (bin)")
+    ax.set_ylabel("Accuracy (bin)")
+    ax.set_title("Combined grade calibration, test set", loc="left")
+    ax.grid(color=GRID, lw=0.8)
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("run")
+    parser.add_argument("run", nargs="?")
+    parser.add_argument("--calibration", default=None, help="calibration.json -> reliability diagram")
     parser.add_argument("--out", default="docs/paper/figures")
     parser.add_argument("--prefix", default=None)
     args = parser.parse_args(argv)
-    run, out = Path(args.run), Path(args.out)
+    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.calibration:
+        calib = json.loads(Path(args.calibration).read_text())
+        calibration_figure(calib, out / f"calibration_{calib['version']}.png")
+    if not args.run:
+        return
+    run = Path(args.run)
     prefix = args.prefix or run.name.rsplit("_", 1)[0]
     test = json.loads((run / "test_metrics.json").read_text())
     card = json.loads((run / "model_card.json").read_text())
