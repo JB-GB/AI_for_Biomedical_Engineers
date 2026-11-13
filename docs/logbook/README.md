@@ -22,3 +22,5 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-13 | [Paired bootstrap promotion & CIs](2026-11-13_M5-T5.3_bootstrap-promotion.md) | M5 | Decision |
 | 2026-11-13 | [ONNX export, API and desktop client](2026-11-13_M6-T6.2_onnx-api-desktop.md) | M6 | Result |
 | 2026-11-13 | [Grad-CAM explanations & calibration](2026-11-13_M4-T4.4_gradcam-calibration.md) | M4 | Result / Correction |
+| 2026-11-13 | [PD scoring rule & loss masking (v0004)](2026-11-13_M4-T4.1_pd-gs0-rule.md) | M4 | Result / Decision |
+| 2026-11-13 | [Multi-runtime: local, Colab, runner](2026-11-13_M7-T7.1_multi-runtime.md) | M7 | Result |
