@@ -9,7 +9,7 @@ from rausnet.data.dataset import IGNORE_INDEX, JointDataset, load_input  # noqa:
 from rausnet.data.manifest import read_manifest  # noqa: E402
 from rausnet.data.synthetic import generate_dataset  # noqa: E402
 from rausnet.models import GradingNet  # noqa: E402
-from rausnet.train import load_config, mask_pd_targets, pd_target, train  # noqa: E402
+from rausnet.train import load_config, mask_pd_targets, pd_target, pick_device, train  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -95,3 +95,8 @@ def test_unresolved_env_var_rejected(monkeypatch):
     monkeypatch.delenv("RAUSNET_DATA_DIR", raising=False)
     with pytest.raises(ValueError, match="environment variable"):
         load_config("configs/train/baseline.yaml")
+
+
+def test_forced_device(monkeypatch):
+    monkeypatch.setenv("RAUSNET_DEVICE", "cpu")
+    assert pick_device().type == "cpu"

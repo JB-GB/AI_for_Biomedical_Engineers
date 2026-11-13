@@ -63,6 +63,13 @@ def load_config(path: str | Path | None, base: dict | None = None,
 
 
 def pick_device() -> torch.device:
+    """CUDA when available; ``RAUSNET_DEVICE=cpu`` (or ``cuda``) forces a device, e.g. for
+    cross-runtime equivalence checks (an empty CUDA_VISIBLE_DEVICES is ignored on Windows)."""
+    forced = os.environ.get("RAUSNET_DEVICE", "").strip().lower()
+    if forced:
+        if forced == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("RAUSNET_DEVICE=cuda but CUDA is not available")
+        return torch.device(forced)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
