@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 
 N_CLASSES = 4
@@ -134,3 +136,30 @@ def paired_bootstrap(y_true, pred_a, pred_b, groups, metric=quadratic_weighted_k
     a, b = metric(y_true, pred_a), metric(y_true, pred_b)
     return {"a": a, "b": b, "diff": b - a, "ci_low": float(lo), "ci_high": float(hi),
             "n_boot": n_boot, "alpha": alpha, "n_groups": len(idx)}
+
+
+def reliability_bins(y_true, probs: np.ndarray, n_bins: int = 10) -> list[dict]:
+    """Top-label reliability bins: confidence vs accuracy per equal-width confidence bin."""
+    y_true = np.asarray(y_true, int)
+    conf = probs.max(axis=1)
+    correct = probs.argmax(axis=1) == y_true
+    edges = np.linspace(0, 1, n_bins + 1)
+    bins = []
+    for lo, hi in itertools.pairwise(edges):
+        sel = (conf > lo) & (conf <= hi) if lo > 0 else (conf >= lo) & (conf <= hi)
+        if sel.any():
+            bins.append({"lo": float(lo), "hi": float(hi), "n": int(sel.sum()),
+                         "confidence": float(conf[sel].mean()), "accuracy": float(correct[sel].mean())})
+    return bins
+
+
+def expected_calibration_error(y_true, probs: np.ndarray, n_bins: int = 10) -> float:
+    """ECE: sample-weighted mean |accuracy - confidence| over top-label confidence bins."""
+    n = len(np.asarray(y_true))
+    bins = reliability_bins(y_true, probs, n_bins)
+    return float(sum(b["n"] / n * abs(b["accuracy"] - b["confidence"]) for b in bins))
+
+
+def negative_log_likelihood(y_true, probs: np.ndarray) -> float:
+    y_true = np.asarray(y_true, int)
+    return float(-np.log(np.clip(probs[np.arange(len(y_true)), y_true], 1e-12, 1)).mean())

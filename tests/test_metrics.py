@@ -96,3 +96,17 @@ def test_paired_bootstrap_is_deterministic():
     y, groups, rng = _toy(2)
     p = np.where(rng.random(len(y)) < 0.7, y, 0)
     assert paired_bootstrap(y, y, p, groups, n_boot=100) == paired_bootstrap(y, y, p, groups, n_boot=100)
+
+
+def test_calibration_metrics():
+    from rausnet.metrics import expected_calibration_error, negative_log_likelihood, reliability_bins
+
+    y = np.array([0, 1, 2, 3])
+    perfect = np.eye(4)[y]
+    assert expected_calibration_error(y, perfect) == 0
+    assert negative_log_likelihood(y, perfect) == pytest.approx(0, abs=1e-9)
+    # Always 90 % confident but only 50 % right -> ECE 0.4
+    probs = np.full((4, 4), 0.1 / 3)
+    probs[np.arange(4), [0, 1, 0, 0]] = 0.9
+    assert expected_calibration_error(y, probs) == pytest.approx(0.4)
+    assert sum(b["n"] for b in reliability_bins(y, probs)) == 4
