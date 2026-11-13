@@ -1,6 +1,6 @@
 # Where we left off — resume guide
 
-**Last update:** 2026-11-13 · **Branch:** `PIA_devl` · **Next milestone:** M6 (ONNX + API + desktop client)
+**Last update:** 2026-11-13 · **Branch:** `PIA_devl` · **Next milestone:** M4 (model improvement) / M7 (runtimes)
 
 ## 1. Status at a glance
 
@@ -12,12 +12,14 @@
 | M3 Baseline model | ✅ Synthetic baseline trained: test combined QWK 0.908 (logbook M3-T3.2) · MLflow pending |
 | M4 | ⏳ Not started |
 | M5 Retraining loop | ✅ `rausnet.retrain` + registry + paired-bootstrap promotion (logbook M5) |
-| M6–M8 | ⏳ Not started |
+| M6 Product | ✅ ONNX export, FastAPI, PySide6 app (logbook M6) · PDF report, installer, usability test pending |
+| M7–M8 | ⏳ Not started |
 
-Code that exists and passes tests (76 tests):
+Code that exists and passes tests (94 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
-`registry.py`, plus `scripts/make_figures.py`.
+`registry.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`,
+plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`.
 
 ## 2. Set up the machine again (needs internet once)
 
@@ -27,6 +29,7 @@ py -3.11 -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"
 .venv/Scripts/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 .venv/Scripts/python -m pip install "timm>=1.0" "pyyaml>=6.0" "matplotlib>=3.8"
+.venv/Scripts/python -m pip install -e ".[serve,ui]" onnx onnxscript
 .venv/Scripts/python -m pytest
 ```
 If `.venv` still exists, skip the installs. Pretrained EfficientNet-B0 weights are
@@ -58,13 +61,21 @@ export RAUSNET_DATA_DIR=J:/rausnet_data
 
 ## 4. Next steps, in order
 
-1. [ ] **M6** ONNX export of the registry `current` model with JSON sidecar → FastAPI inference
-   service → PySide6 desktop client ("not clinically validated" banner, "submit correction"
-   button writing to `incoming/`).
-2. [ ] **M4** Grad-CAM on PD false positives; US-style augmentations; backbone comparison.
-3. [ ] **M7** Colab notebook + self-hosted runner workflow (`docs/03_colab_and_runners.md`).
-4. [ ] **S1** download selected UMUD datasets, log licences.
-5. [ ] T3.4 MLflow tracking (optional).
+Use the app (current model must be exported once after each promotion):
+```bash
+.venv/Scripts/python -m rausnet.export          # models/<current>/model.onnx + model.json
+.venv/Scripts/rausnet-desktop                   # local API + window (Spanish); --lang en
+.venv/Scripts/rausnet-api --port 8000           # API only (http://127.0.0.1:8000/docs)
+```
+
+1. [ ] **M4** Grad-CAM (PD false positives + overlay in the app), confidence calibration
+   (temperature scaling — synthetic model shows ~100 % confidence), US-style augmentations,
+   backbone comparison.
+2. [ ] **M7** Colab notebook + self-hosted runner workflow (`docs/03_colab_and_runners.md`).
+3. [ ] **M6 leftovers** PDF report, PyInstaller installer, Docker image for the API, SUS usability test.
+4. [ ] Auto-export ONNX after a promotion in `rausnet.retrain`.
+5. [ ] **S1** download selected UMUD datasets, log licences.
+6. [ ] T3.4 MLflow tracking (optional).
 
 ## 5. Reminders
 - Commits: `[Type] [scope] : description`, body ≤ 25 words, English, **no co-author trailers** (hook enforces).
