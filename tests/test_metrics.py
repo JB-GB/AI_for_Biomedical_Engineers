@@ -6,6 +6,7 @@ from rausnet.metrics import (
     classification_report,
     combined_probabilities,
     confusion_matrix,
+    consistent_pd_probabilities,
     quadratic_weighted_kappa,
     roc_auc,
 )
@@ -48,6 +49,18 @@ def test_combined_probabilities_rule():
     assert np.allclose(out[0], [0, 0, 0, 1])  # GS1 + PD3 -> 3
     assert np.allclose(out[1], [1, 0, 0, 0])  # GS0 -> 0 regardless of PD
     assert np.allclose(out[2], [0, 0.5, 0.5, 0])
+
+
+
+def test_consistent_pd_probabilities():
+    p_gs = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0.4, 0.6, 0, 0]], float)
+    p_pd = np.array([[0, 0, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], float)
+    out = consistent_pd_probabilities(p_gs, p_pd)
+    assert np.allclose(out.sum(axis=1), 1)
+    assert np.allclose(out[0], [1, 0, 0, 0])  # certain GS0 -> PD0 whatever the PD head says
+    assert np.allclose(out[1], [0, 0, 1, 0])  # synovium present -> PD head unchanged
+    assert np.allclose(out[2], [0.4, 0, 0, 0.6])
+    assert np.allclose(p_pd[0], [0, 0, 0, 1])  # input not modified
 
 
 def test_report_keys():

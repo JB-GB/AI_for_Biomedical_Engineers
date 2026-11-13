@@ -79,6 +79,17 @@ def combined_probabilities(p_gs: np.ndarray, p_pd: np.ndarray) -> np.ndarray:
     return out
 
 
+def consistent_pd_probabilities(p_gs: np.ndarray, p_pd: np.ndarray) -> np.ndarray:
+    """P(PD grade) under the scoring rule that PD > 0 requires synovium (GS > 0).
+
+    The PD head is only trained where GS >= 1, so its output is undefined on GS 0 joints:
+    P(PD = d) = P(GS = 0) * [d = 0] + P(GS >= 1) * p_pd[d]. Shapes (N, 4) -> (N, 4).
+    """
+    out = (1.0 - p_gs[:, :1]) * p_pd
+    out[:, 0] += p_gs[:, 0]
+    return out
+
+
 def classification_report(y_true, probs: np.ndarray) -> dict:
     """Metrics for one 4-class head. ``probs`` has shape (N, 4)."""
     y_true = np.asarray(y_true, int)
