@@ -89,12 +89,12 @@ gantt
 - T4.3 Compare backbones (CNN vs ViT/US foundation model); ablations.
 - T4.4 Explainability: Grad-CAM overlays for the GUI and the paper.
 - T4.5 Calibration (temperature scaling) and confidence thresholds for "refer to specialist".
-- T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap).
+- T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap). CIs ✅, k-fold pending.
 
 ### M5 — Retraining loop
 - T5.1 `data/incoming/` drop-zone + validation of new labelled entries. ✅
 - T5.2 `retrain` command: merges data, fine-tunes from last checkpoint, evaluates on the **frozen** test set. ✅
-- T5.3 Promotion rule: new model replaces current only if test metrics do not degrade. ✅
+- T5.3 Promotion rule: new model replaces current only if test metrics do not degrade. ✅ (paired patient-level bootstrap)
 - T5.4 Model registry (`models/registry.json`: version, data hash, metrics, date). ✅
 
 ### M6 — GUI for non-technical users
