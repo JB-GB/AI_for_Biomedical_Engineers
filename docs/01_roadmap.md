@@ -53,7 +53,7 @@ gantt
 - T0.2 Install commit-msg hook (`git config core.hooksPath .githooks`) on every clone.
 - T0.3 Answer open questions in `00_feasibility.md §6`; log decisions. ✅
 - T0.4 Choose architecture option → **Option B** (ADR-001). ✅
-- T0.5 Create `pyproject.toml`, project layout, manifest + patient-level split.
+- T0.5 Create `pyproject.toml`, project layout, manifest + patient-level split. ✅
 - T0.6 Assign work packages to the 3 contributors.
 **Exit criteria:** hook works, option chosen, env installs from scratch in < 10 min.
 
@@ -77,11 +77,11 @@ gantt
 - T2.5 Dataset versioning (DVC or hashed manifests).
 
 ### M3 — Baseline model
-- T3.1 Config-driven training script (`configs/*.yaml`).
-- T3.2 Baseline: ImageNet-pretrained EfficientNet-B0 / ConvNeXt-T, two inputs (GS + PD), 4-class head; fits 8 GB VRAM with AMP.
-- T3.3 Metrics: accuracy, balanced acc, sensitivity, specificity, AUC, quadratic weighted kappa.
-- T3.4 Experiment tracking (MLflow local or W&B free tier).
-- T3.5 Model card v0.
+- T3.1 Config-driven training script (`configs/*.yaml`). ✅
+- T3.2 Baseline: ImageNet-pretrained EfficientNet-B0 / ConvNeXt-T, two inputs (GS + PD), 4-class head; fits 8 GB VRAM with AMP. ✅ (S2: combined QWK 0.908)
+- T3.3 Metrics: accuracy, balanced acc, sensitivity, specificity, AUC, quadratic weighted kappa. ✅
+- T3.4 Experiment tracking (MLflow local or W&B free tier). Pending — history.csv + model card for now.
+- T3.5 Model card v0. ✅ (`model_card.json` per run)
 
 ### M4 — Improved model & evaluation
 - T4.1 4-class grading, class-imbalance handling (weighted loss / focal loss).
