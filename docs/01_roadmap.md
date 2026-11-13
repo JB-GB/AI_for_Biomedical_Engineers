@@ -84,7 +84,7 @@ gantt
 - T3.5 Model card v0. ✅ (`model_card.json` per run)
 
 ### M4 — Improved model & evaluation
-- T4.1 4-class grading, class-imbalance handling (weighted loss / focal loss).
+- T4.1 4-class grading, class-imbalance handling (weighted loss / focal loss). ✅ (weighted CE; GS0 → PD0 rule + PD loss masking, v0004)
 - T4.2 Augmentations realistic for US (speckle noise, gain, depth, flips).
 - T4.3 Compare backbones (CNN vs ViT/US foundation model); ablations.
 - T4.4 Explainability: Grad-CAM overlays for the GUI and the paper. ✅ (exact CAM in ONNX graph)
@@ -105,10 +105,10 @@ gantt
 - T6.4 Usability test with ≥ 3 non-technical users (SUS questionnaire → paper).
 
 ### M7 — Multi-runtime execution
-- T7.1 Local: one-command install + run (CPU & GPU).
-- T7.2 Colab: notebook that clones repo, mounts Drive data, trains, saves to Drive (see `03_colab_and_runners.md`).
-- T7.3 Self-hosted GitHub runner: manual-dispatch training workflow.
-- T7.4 Same config produces equivalent results in all three (log differences).
+- T7.1 Local: one-command install + run (CPU & GPU). ✅ (`scripts/setup_env.py`)
+- T7.2 Colab: notebook that clones repo, mounts Drive data, trains, saves to Drive (see `03_colab_and_runners.md`). ✅ built (auto-resume); first Colab run pending
+- T7.3 Self-hosted GitHub runner: manual-dispatch training workflow. ✅ built + CI on hosted runners; runner registration pending
+- T7.4 Same config produces equivalent results in all three (log differences). 🟡 method + local CPU vs GPU ✅; Colab/runner pending
 
 ### M8 — Validation & paper
 - T8.1 Final evaluation on held-out test set; compare with literature table.
