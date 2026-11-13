@@ -1,0 +1,33 @@
+# Retraining: python -m rausnet.retrain --config configs/retrain/default.yaml --add <manifest> [--add ...]
+# The first call (empty registry) trains from scratch; later calls fine-tune the current model.
+output_dir: outputs
+models_dir: models          # registry.json + one folder per version (git-ignored)
+
+data:
+  root: ${RAUSNET_DATA_DIR}  # data root; --add manifests must live inside it
+  image_size: 224
+  split_ratios: [0.70, 0.15, 0.15]
+  split_salt: rausnet-split-v1   # never change: keeps the test set frozen across versions
+
+model:                       # used only for the first model; later versions reuse the parent's
+  backbone: efficientnet_b0
+  pretrained: true
+  dropout: 0.2
+
+train:
+  epochs: 30                 # first model
+  finetune_epochs: 10        # later versions
+  batch_size: 32
+  lr: 3.0e-4
+  finetune_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  class_weighting: true
+  amp: true
+  num_workers: 0
+  patience: 8
+  seed: 42
+
+promotion:
+  metric: qwk                # combined-grade metric compared on the same frozen test split
+  tolerance: 0.0             # candidate >= current - tolerance -> promoted
+  sources: null              # e.g. [hospital] to judge only on clinical test images
