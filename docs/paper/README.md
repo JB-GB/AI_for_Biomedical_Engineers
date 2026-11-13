@@ -36,4 +36,4 @@ All with 95 % bootstrap CIs, patient-level.
 - [x] Confusion matrix + training curves, synthetic baseline (`figures/baseline_s2_*.png`)
 - [ ] Confusion matrix, ROC on clinical data
 - [ ] Retraining curve (performance vs added data)
-- [ ] GUI screenshot
+- [x] GUI screenshot (`figures/gui_desktop.png`, synthetic example)
