@@ -1,0 +1,97 @@
+# Training / retraining on the team's self-hosted GPU runner.
+# Security (public repository): manual trigger ONLY, read-only token, no secrets, inputs passed
+# through env vars (never interpolated into scripts), only metrics leave the machine.
+# One-time runner setup: see docs/03_colab_and_runners.md section 3.
+name: train-self-hosted
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "train = one run; retrain = registry + promotion"
+        type: choice
+        options: [train, retrain]
+        default: train
+      config:
+        description: "config file (train: configs/train/*.yaml, retrain: configs/retrain/default.yaml)"
+        default: configs/train/baseline.yaml
+      overrides:
+        description: "space-separated key=value overrides, e.g. train.epochs=5"
+        default: ""
+      add:
+        description: "retrain only: space-separated manifests relative to the data root"
+        default: ""
+      export:
+        description: "retrain only: calibrate + export ONNX when the candidate is promoted"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rausnet-gpu        # one GPU job at a time
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: [self-hosted, gpu, rausnet]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash          # Git Bash on Windows runners
+    env:
+      PY: ${{ vars.RAUSNET_PYTHON }}                 # persistent venv python with CUDA torch
+      RAUSNET_DATA_DIR: ${{ vars.RAUSNET_DATA_DIR }}  # data root, outside the workspace
+      MODELS_DIR: ${{ vars.RAUSNET_MODELS_DIR }}      # persistent registry, outside the workspace
+      TASK: ${{ inputs.task }}
+      CONFIG: ${{ inputs.config }}
+      OVERRIDES: ${{ inputs.overrides }}
+      ADD: ${{ inputs.add }}
+      EXPORT: ${{ inputs.export }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check runner variables
+        run: |
+          for v in PY RAUSNET_DATA_DIR MODELS_DIR; do
+            [ -n "${!v}" ] || { echo "::error::repository variable for $v is not set"; exit 1; }
+          done
+          "$PY" -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+      - name: Install this commit
+        run: '"$PY" -m pip install -q -e ".[train,serve]"'
+      - name: Train
+        if: inputs.task == 'train'
+        run: '"$PY" -m rausnet.train --config "$CONFIG" --set output_dir=outputs $OVERRIDES'
+      - name: Retrain
+        if: inputs.task == 'retrain'
+        run: |
+          [ -n "$ADD" ] || { echo "::error::retrain needs at least one manifest in 'add'"; exit 1; }
+          args=(); for m in $ADD; do args+=(--add "$m"); done
+          current() { "$PY" -c "import os; from rausnet.registry import Registry; c = Registry(os.environ['MODELS_DIR']).current(); print(c.version if c else '')"; }
+          before=$(current)
+          "$PY" -m rausnet.retrain --config "$CONFIG" "${args[@]}" \
+            --set models_dir="$MODELS_DIR" output_dir=outputs $OVERRIDES
+          after=$(current)
+          cp "$MODELS_DIR/$(ls -1 "$MODELS_DIR" | grep -E '^v[0-9]{4}$' | tail -1)/retrain_report.json" outputs/ || true
+          if [ "$after" != "$before" ]; then echo "PROMOTED=$after" >> "$GITHUB_ENV"; fi
+      - name: Calibrate + export the promoted model
+        if: inputs.task == 'retrain' && inputs.export && env.PROMOTED != ''
+        run: |
+          "$PY" -m rausnet.calibrate --models-dir "$MODELS_DIR" --version "$PROMOTED"
+          "$PY" -m rausnet.export --models-dir "$MODELS_DIR" --version "$PROMOTED"
+          cp "$MODELS_DIR/$PROMOTED/"{calibration.json,model.json} outputs/
+      - name: Upload metrics (no data, no weights)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rausnet-${{ inputs.task }}-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            outputs/**/model_card.json
+            outputs/**/test_metrics.json
+            outputs/**/history.csv
+            outputs/**/config.yaml
+            outputs/*.json
