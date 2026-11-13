@@ -33,6 +33,7 @@ All with 95 % bootstrap CIs, patient-level.
 - [ ] Dataset flow (CONSORT-style: patients → images → splits)
 - [x] Example synthetic images per grade (`figures/synthetic_examples.png`)
 - [ ] Real example images per grade + Grad-CAM
-- [ ] Confusion matrix, ROC
+- [x] Confusion matrix + training curves, synthetic baseline (`figures/baseline_s2_*.png`)
+- [ ] Confusion matrix, ROC on clinical data
 - [ ] Retraining curve (performance vs added data)
 - [ ] GUI screenshot
