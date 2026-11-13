@@ -48,8 +48,52 @@ def evaluate_predictions(p_gs, p_pd, y_gs, y_pd) -> dict:
     return report
 
 
+def load_model(checkpoint: str | Path, device: torch.device):
+    """Load a checkpoint written by ``rausnet.train``; returns (model, checkpoint config)."""
+    from rausnet.train import build_model
+
+    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    cfg = ckpt["config"]
+    model = build_model({"model": {**cfg["model"], "pretrained": False}}).to(device)
+    model.load_state_dict(ckpt["state_dict"])
+    return model, cfg
+
+
+def evaluate_checkpoint(checkpoint: str | Path, cfg: dict, split: str = "test",
+                        sources: list[str] | None = None) -> dict:
+    """Evaluate ``checkpoint`` on a split of the dataset described by ``cfg['data']``.
+
+    The split is computed from ``cfg`` (not from the checkpoint), so two models can
+    be compared on exactly the same images. ``sources`` restricts evaluation to
+    records from those sources (e.g. ``["hospital"]``). Adds ``by_source`` reports.
+    """
+    from rausnet.data.dataset import JointDataset
+    from rausnet.data.manifest import read_manifest
+    from rausnet.data.split import split_records
+    from rausnet.train import pick_device
+
+    d = cfg["data"]
+    root = Path(d["root"])
+    records = split_records(read_manifest(root / d["manifest"]), tuple(d["split_ratios"]),
+                            d["split_salt"])[split]
+    if sources:
+        records = [r for r in records if r.source in sources]
+    if not records:
+        raise ValueError(f"no records in split '{split}' for sources {sources}")
+    device = pick_device()
+    model, _ = load_model(checkpoint, device)
+    loader = DataLoader(JointDataset(records, root, d["image_size"]), batch_size=cfg["train"]["batch_size"])
+    preds = predict(model, loader, device, cfg["train"].get("amp", False))
+    report = evaluate_predictions(*preds)
+    report["n_patients"] = len({r.patient_id for r in records})
+    src = np.array([r.source for r in records])
+    if len(set(src)) > 1:
+        report["by_source"] = {s: evaluate_predictions(*(p[src == s] for p in preds)) for s in sorted(set(src))}
+    return report
+
+
 def main(argv=None) -> None:
-    from rausnet.train import build_loaders, build_model, load_config, pick_device
+    from rausnet.train import load_config
 
     parser = argparse.ArgumentParser(description="Evaluate a trained run.")
     parser.add_argument("--run", required=True, help="run directory containing model.pt")
@@ -57,14 +101,8 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     run = Path(args.run)
-    ckpt = torch.load(run / "model.pt", map_location="cpu", weights_only=False)
-    cfg = ckpt["config"]
-    cfg["model"]["pretrained"] = False
-    device = pick_device()
-    model = build_model(cfg).to(device)
-    model.load_state_dict(ckpt["state_dict"])
-    loaders, _ = build_loaders(load_config(None, cfg))
-    report = evaluate_predictions(*predict(model, loaders[args.split], device, cfg["train"]["amp"]))
+    cfg = torch.load(run / "model.pt", map_location="cpu", weights_only=False)["config"]
+    report = evaluate_checkpoint(run / "model.pt", load_config(None, cfg), args.split)
     out = run / f"{args.split}_metrics.json"
     out.write_text(json.dumps(report, indent=2))
     c = report["combined"]
