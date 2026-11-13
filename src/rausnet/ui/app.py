@@ -19,10 +19,11 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -69,6 +70,7 @@ STRINGS = {
         "images": "Imágenes (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
         "w_not_validated": "Modelo no validado clínicamente: solo investigación, no para diagnóstico.",
         "w_no_pd": "Sin imagen Power Doppler: los grados PD y combinado no son confiables.",
+        "heatmap": "Mostrar mapa de calor (Grad-CAM): zonas que más influyeron en el grado",
     },
     "en": {
         "title": "RAUSNet — Ultrasound synovitis grading",
@@ -97,6 +99,7 @@ STRINGS = {
         "images": "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
         "w_not_validated": "Model not clinically validated: research use only, not for diagnosis.",
         "w_no_pd": "No Power Doppler image: PD and combined grades are unreliable.",
+        "heatmap": "Show heat map (Grad-CAM): regions that most influenced the grade",
     },
 }
 
@@ -107,6 +110,8 @@ class ImagePanel(QGroupBox):
     def __init__(self, title: str, t: dict):
         super().__init__(title)
         self.t, self.path = t, None
+        self.original: QPixmap | None = None
+        self.heatmap: QPixmap | None = None
         self.view = QLabel(t["no_image"])
         self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.view.setFixedSize(PREVIEW, PREVIEW)
@@ -122,14 +127,32 @@ class ImagePanel(QGroupBox):
         if path:
             self.set_path(path)
 
+    @staticmethod
+    def _scaled(pix: QPixmap) -> QPixmap:
+        return pix.scaled(PREVIEW, PREVIEW, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
+
     def set_path(self, path: str | Path | None) -> None:
         self.path = str(path) if path else None
-        if self.path:
-            pix = QPixmap(self.path).scaled(PREVIEW, PREVIEW, Qt.AspectRatioMode.KeepAspectRatio,
-                                            Qt.TransformationMode.SmoothTransformation)
-            self.view.setPixmap(pix)
+        self.heatmap = None
+        self.original = self._scaled(QPixmap(self.path)) if self.path else None
+        if self.original:
+            self.view.setPixmap(self.original)
         else:
             self.view.setText(self.t["no_image"])
+
+    def set_heatmap(self, data_url: str | None) -> None:
+        """Store a Grad-CAM overlay received from the API as a base64 PNG data URL."""
+        self.heatmap = None
+        if data_url and self.path:
+            pix = QPixmap()
+            pix.loadFromData(QByteArray.fromBase64(data_url.split(",", 1)[1].encode("ascii")), "PNG")
+            self.heatmap = self._scaled(pix)
+
+    def show_heatmap(self, on: bool) -> None:
+        pix = self.heatmap if on and self.heatmap else self.original
+        if pix:
+            self.view.setPixmap(pix)
 
 
 class MainWindow(QMainWindow):
@@ -156,6 +179,8 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setMinimumHeight(40)
         self.analyze_btn.setStyleSheet("font-size:15px; font-weight:bold;")
         self.analyze_btn.clicked.connect(self.analyze)
+        self.heatmap_box = QCheckBox(self.t["heatmap"])
+        self.heatmap_box.toggled.connect(self.toggle_heatmap)
 
         images = QHBoxLayout()
         images.addWidget(self.gs_panel)
@@ -218,6 +243,7 @@ class MainWindow(QMainWindow):
         left = QVBoxLayout()
         left.addLayout(images)
         left.addWidget(self.analyze_btn)
+        left.addWidget(self.heatmap_box)
         left.addStretch()
         body = QHBoxLayout()
         body.addLayout(left)
@@ -238,7 +264,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, self.t["title"], self.t["need_gs"])
             return None
         try:
-            res = self.client.predict(self.gs_panel.path, self.pd_panel.path)
+            res = self.client.predict(self.gs_panel.path, self.pd_panel.path, explain=True)
         except (ApiError, OSError) as exc:
             self._error(exc)
             return None
@@ -252,9 +278,17 @@ class MainWindow(QMainWindow):
         codes = res.get("warning_codes") or []
         texts = [self.t.get(f"w_{c}", w) for c, w in zip(codes, res["warnings"], strict=False)] or res["warnings"]
         self.warnings.setText("\n".join(f"⚠ {w}" for w in texts))
+        maps = res.get("heatmaps", {})
+        self.gs_panel.set_heatmap(maps.get("gs"))
+        self.pd_panel.set_heatmap(maps.get("pd") if self.pd_panel.path else None)
+        self.toggle_heatmap(self.heatmap_box.isChecked())
         self.gs_fix.setCurrentIndex(res["gs"]["grade"])
         self.pd_fix.setCurrentIndex(res["pd"]["grade"] if self.pd_panel.path else 0)
         return res
+
+    def toggle_heatmap(self, on: bool) -> None:
+        self.gs_panel.show_heatmap(on)
+        self.pd_panel.show_heatmap(on)
 
     def submit(self) -> dict | None:
         if not self.gs_panel.path:

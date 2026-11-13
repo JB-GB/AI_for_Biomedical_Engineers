@@ -21,6 +21,18 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def no_modal_dialogs(monkeypatch):
+    """A modal QMessageBox would block the offscreen test run forever: fail instead."""
+    from PySide6.QtWidgets import QMessageBox
+
+    def fail(_parent, title, text, *args, **kwargs):
+        raise AssertionError(f"unexpected dialog: {title}: {text}")
+
+    monkeypatch.setattr(QMessageBox, "critical", fail)
+    monkeypatch.setattr(QMessageBox, "information", fail)
+
+
 @pytest.fixture()
 def window(qapp, onnx_model, tmp_path):
     client = ApiClient(http=TestClient(create_app(onnx_model[0], data_dir=tmp_path)))
@@ -63,3 +75,17 @@ def test_warnings_are_localized(qapp, onnx_model, synth_small):
     w.gs_panel.set_path(synth_small / r.gs_path)
     w.analyze()
     assert "no validado" in w.warnings.text() and "Sin imagen Power Doppler" in w.warnings.text()
+
+
+def test_heatmap_toggle(window, synth_small):
+    w, _ = window
+    r = read_manifest(synth_small / "manifest.csv")[0]
+    w.gs_panel.set_path(synth_small / r.gs_path)
+    w.pd_panel.set_path(synth_small / r.pd_path)
+    w.analyze()
+    assert w.gs_panel.heatmap is not None and w.pd_panel.heatmap is not None
+    original = w.pd_panel.view.pixmap().toImage()
+    w.heatmap_box.setChecked(True)
+    assert w.pd_panel.view.pixmap().toImage() != original
+    w.heatmap_box.setChecked(False)
+    assert w.pd_panel.view.pixmap().toImage() == original
