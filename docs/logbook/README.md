@@ -18,3 +18,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-11 | [Synthetic joint US generator](2026-11-11_M1-T1.7_synthetic-generator.md) | M1 | Result |
 | 2026-11-11 | [Training pipeline & first GPU attempt](2026-11-11_M3-T3.1_training-pipeline.md) | M3 | Blocker |
 | 2026-11-13 | [Baseline results on synthetic data](2026-11-13_M3-T3.2_baseline-results.md) | M3 | Result |
+| 2026-11-13 | [Retraining loop with promotion rule](2026-11-13_M5-T5.2_retraining-loop.md) | M5 | Result |
