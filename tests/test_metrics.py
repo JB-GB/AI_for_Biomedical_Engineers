@@ -54,3 +54,45 @@ def test_report_keys():
     probs = np.eye(4)[[0, 1, 2, 3]]
     rep = classification_report([0, 1, 2, 3], probs)
     assert rep["accuracy"] == 1.0 and rep["qwk"] == pytest.approx(1.0) and rep["auc_ge2"] == 1.0
+
+
+def _toy(seed=0, n_patients=40, per=6):
+    rng = np.random.default_rng(seed)
+    y = rng.integers(0, 4, n_patients * per)
+    groups = np.repeat(np.arange(n_patients), per)
+    return y, groups, rng
+
+
+def test_bootstrap_ci_contains_point_estimate():
+    from rausnet.metrics import bootstrap_ci
+
+    y, groups, rng = _toy()
+    pred = np.where(rng.random(len(y)) < 0.8, y, rng.integers(0, 4, len(y)))
+    lo, hi = bootstrap_ci(y, pred, groups, n_boot=300)
+    assert lo <= quadratic_weighted_kappa(y, pred) <= hi < 1
+
+
+def test_paired_bootstrap_identical_models():
+    from rausnet.metrics import paired_bootstrap
+
+    y, groups, _ = _toy()
+    res = paired_bootstrap(y, y, y, groups, n_boot=200)
+    assert res["diff"] == 0 and res["ci_low"] == 0 and res["ci_high"] == 0 and res["n_groups"] == 40
+
+
+def test_paired_bootstrap_detects_worse_model():
+    from rausnet.metrics import paired_bootstrap
+
+    y, groups, rng = _toy(1)
+    good = np.where(rng.random(len(y)) < 0.95, y, rng.integers(0, 4, len(y)))
+    bad = np.where(rng.random(len(y)) < 0.4, y, rng.integers(0, 4, len(y)))
+    res = paired_bootstrap(y, good, bad, groups, n_boot=300)
+    assert res["diff"] < 0 and res["ci_high"] < 0
+
+
+def test_paired_bootstrap_is_deterministic():
+    from rausnet.metrics import paired_bootstrap
+
+    y, groups, rng = _toy(2)
+    p = np.where(rng.random(len(y)) < 0.7, y, 0)
+    assert paired_bootstrap(y, y, p, groups, n_boot=100) == paired_bootstrap(y, y, p, groups, n_boot=100)

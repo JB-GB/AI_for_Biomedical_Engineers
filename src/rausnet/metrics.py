@@ -90,3 +90,47 @@ def classification_report(y_true, probs: np.ndarray) -> dict:
         "auc_ge2": roc_auc(y_true >= 2, probs[:, 2:].sum(axis=1)),
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
     }
+
+
+def _group_index(groups) -> list[np.ndarray]:
+    """Row indices for each unique group (patient), in a stable order."""
+    groups = np.asarray(groups)
+    _, inverse = np.unique(groups, return_inverse=True)
+    return [np.flatnonzero(inverse == g) for g in range(inverse.max() + 1)] if len(groups) else []
+
+
+def bootstrap_ci(y_true, y_pred, groups, metric=quadratic_weighted_kappa, n_boot: int = 2000,
+                 alpha: float = 0.05, seed: int = 0) -> tuple[float, float]:
+    """Patient-level (cluster) bootstrap percentile CI of ``metric``.
+
+    Patients are resampled with replacement and all their images move together,
+    so correlated images of one patient do not shrink the interval.
+    """
+    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
+    idx = _group_index(groups)
+    rng = np.random.default_rng(seed)
+    stats = []
+    for _ in range(n_boot):
+        rows = np.concatenate([idx[i] for i in rng.integers(len(idx), size=len(idx))])
+        stats.append(metric(y_true[rows], y_pred[rows]))
+    lo, hi = np.nanpercentile(stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return float(lo), float(hi)
+
+
+def paired_bootstrap(y_true, pred_a, pred_b, groups, metric=quadratic_weighted_kappa, n_boot: int = 2000,
+                     alpha: float = 0.05, seed: int = 0) -> dict:
+    """Paired patient-level bootstrap of ``metric(b) - metric(a)`` on the same images.
+
+    Returns the observed values and difference with its percentile CI.
+    """
+    y_true, pred_a, pred_b = np.asarray(y_true), np.asarray(pred_a), np.asarray(pred_b)
+    idx = _group_index(groups)
+    rng = np.random.default_rng(seed)
+    diffs = []
+    for _ in range(n_boot):
+        rows = np.concatenate([idx[i] for i in rng.integers(len(idx), size=len(idx))])
+        diffs.append(metric(y_true[rows], pred_b[rows]) - metric(y_true[rows], pred_a[rows]))
+    lo, hi = np.nanpercentile(diffs, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    a, b = metric(y_true, pred_a), metric(y_true, pred_b)
+    return {"a": a, "b": b, "diff": b - a, "ci_low": float(lo), "ci_high": float(hi),
+            "n_boot": n_boot, "alpha": alpha, "n_groups": len(idx)}
