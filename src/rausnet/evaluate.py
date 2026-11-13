@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from rausnet.metrics import classification_report, combined_probabilities
+from rausnet.metrics import bootstrap_ci, classification_report, combined_probabilities
 
 
 @torch.no_grad()
@@ -32,13 +32,16 @@ def predict(model, loader: DataLoader, device: torch.device, amp: bool = False):
     return cat(p_gs), cat(p_pd), cat(y_gs), cat(y_pd)
 
 
+def combined_labels(y_gs: np.ndarray, y_pd: np.ndarray) -> np.ndarray:
+    """Combined ground truth: GS 0 -> 0, else max(GS, PD); missing PD (-1) -> GS."""
+    return np.where(y_gs == 0, 0, np.maximum(y_gs, np.where(y_pd >= 0, y_pd, 0)))
+
+
 def evaluate_predictions(p_gs, p_pd, y_gs, y_pd) -> dict:
     """Reports for GS head, PD head (labelled rows only) and the combined grade."""
     has_pd = y_pd >= 0
     p_comb = combined_probabilities(p_gs, p_pd)
-    # Combined ground truth: GS 0 -> 0, else max(GS, PD); PD missing -> GS.
-    y_pd_filled = np.where(has_pd, y_pd, 0)
-    y_comb = np.where(y_gs == 0, 0, np.maximum(y_gs, y_pd_filled))
+    y_comb = combined_labels(y_gs, y_pd)
     report = {
         "gs": classification_report(y_gs, p_gs),
         "combined": classification_report(y_comb, p_comb),
@@ -59,13 +62,13 @@ def load_model(checkpoint: str | Path, device: torch.device):
     return model, cfg
 
 
-def evaluate_checkpoint(checkpoint: str | Path, cfg: dict, split: str = "test",
-                        sources: list[str] | None = None) -> dict:
-    """Evaluate ``checkpoint`` on a split of the dataset described by ``cfg['data']``.
+def predict_checkpoint(checkpoint: str | Path, cfg: dict, split: str = "test",
+                       sources: list[str] | None = None):
+    """Run ``checkpoint`` on a split of the dataset described by ``cfg['data']``.
 
     The split is computed from ``cfg`` (not from the checkpoint), so two models can
-    be compared on exactly the same images. ``sources`` restricts evaluation to
-    records from those sources (e.g. ``["hospital"]``). Adds ``by_source`` reports.
+    be compared on exactly the same images. ``sources`` restricts the records
+    (e.g. ``["hospital"]``). Returns (records, (p_gs, p_pd, y_gs, y_pd)).
     """
     from rausnet.data.dataset import JointDataset
     from rausnet.data.manifest import read_manifest
@@ -83,8 +86,20 @@ def evaluate_checkpoint(checkpoint: str | Path, cfg: dict, split: str = "test",
     device = pick_device()
     model, _ = load_model(checkpoint, device)
     loader = DataLoader(JointDataset(records, root, d["image_size"]), batch_size=cfg["train"]["batch_size"])
-    preds = predict(model, loader, device, cfg["train"].get("amp", False))
+    return records, predict(model, loader, device, cfg["train"].get("amp", False))
+
+
+def evaluate_checkpoint(checkpoint: str | Path, cfg: dict, split: str = "test",
+                        sources: list[str] | None = None, n_boot: int = 2000) -> dict:
+    """Metrics of ``checkpoint`` on a split, with a patient-level 95 % bootstrap CI of the
+    combined QWK and ``by_source`` reports when several sources are present."""
+    records, preds = predict_checkpoint(checkpoint, cfg, split, sources)
     report = evaluate_predictions(*preds)
+    y_comb = combined_labels(preds[2], preds[3])
+    y_hat = combined_probabilities(preds[0], preds[1]).argmax(axis=1)
+    if n_boot:
+        report["combined"]["qwk_ci95"] = bootstrap_ci(y_comb, y_hat, [r.patient_id for r in records],
+                                                      n_boot=n_boot)
     report["n_patients"] = len({r.patient_id for r in records})
     src = np.array([r.source for r in records])
     if len(set(src)) > 1:
