@@ -98,10 +98,10 @@ gantt
 - T5.4 Model registry (`models/registry.json`: version, data hash, metrics, date). ✅
 
 ### M6 — GUI for non-technical users
-- T6.1 Wireframe: load image → result (grade, confidence, heat-map) → export PDF report.
-- T6.2 FastAPI inference service (ONNX Runtime) + PySide6 desktop client.
+- T6.1 Wireframe: load image → result (grade, confidence, heat-map) → export PDF report. Partial ✅ (no PDF, no heat-map yet)
+- T6.2 FastAPI inference service (ONNX Runtime) + PySide6 desktop client. ✅
 - T6.5 PyInstaller installer for Windows; Docker Compose for research servers.
-- T6.3 "Submit correction" button: clinician corrects the grade → feeds `data/incoming/`.
+- T6.3 "Submit correction" button: clinician corrects the grade → feeds `data/incoming/`. ✅
 - T6.4 Usability test with ≥ 3 non-technical users (SUS questionnaire → paper).
 
 ### M7 — Multi-runtime execution
