@@ -87,8 +87,8 @@ gantt
 - T4.1 4-class grading, class-imbalance handling (weighted loss / focal loss).
 - T4.2 Augmentations realistic for US (speckle noise, gain, depth, flips).
 - T4.3 Compare backbones (CNN vs ViT/US foundation model); ablations.
-- T4.4 Explainability: Grad-CAM overlays for the GUI and the paper.
-- T4.5 Calibration (temperature scaling) and confidence thresholds for "refer to specialist".
+- T4.4 Explainability: Grad-CAM overlays for the GUI and the paper. ✅ (exact CAM in ONNX graph)
+- T4.5 Calibration (temperature scaling) and confidence thresholds for "refer to specialist". Temperature scaling ✅; thresholds pending
 - T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap). CIs ✅, k-fold pending.
 
 ### M5 — Retraining loop
