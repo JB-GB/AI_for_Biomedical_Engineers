@@ -20,6 +20,7 @@ import numpy as np
 
 from rausnet.metrics import (
     combined_probabilities,
+    consistent_pd_probabilities,
     expected_calibration_error,
     negative_log_likelihood,
     reliability_bins,
@@ -57,11 +58,12 @@ def _summary(p_gs, p_pd, y_gs, y_pd) -> dict:
 
     has_pd = y_pd >= 0
     p_comb = combined_probabilities(p_gs, p_pd)
+    p_pd_rule = consistent_pd_probabilities(p_gs, p_pd)
     y_comb = combined_labels(y_gs, y_pd)
     return {
         "gs": {"ece": expected_calibration_error(y_gs, p_gs), "nll": negative_log_likelihood(y_gs, p_gs)},
-        "pd": {"ece": expected_calibration_error(y_pd[has_pd], p_pd[has_pd]),
-               "nll": negative_log_likelihood(y_pd[has_pd], p_pd[has_pd])},
+        "pd": {"ece": expected_calibration_error(y_pd[has_pd], p_pd_rule[has_pd]),
+               "nll": negative_log_likelihood(y_pd[has_pd], p_pd_rule[has_pd])},
         "combined": {"ece": expected_calibration_error(y_comb, p_comb), "nll": negative_log_likelihood(y_comb, p_comb),
                      "bins": reliability_bins(y_comb, p_comb)},
     }
@@ -87,7 +89,9 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
 
     _, (vg, vp, vyg, vyp) = predict_checkpoint(ckpt, cfg, "val")
     _, (tg, tp, tyg, typ) = predict_checkpoint(ckpt, cfg, "test")
-    t_gs, t_pd = fit_temperature(vg, vyg), fit_temperature(vp, vyp)
+    # a PD head trained with pd_mask_gs0 never saw GS 0 joints: fit its temperature where PD is defined
+    vyp_fit = np.where(vyg == 0, -1, vyp) if cfg["train"].get("pd_mask_gs0") else vyp
+    t_gs, t_pd = fit_temperature(vg, vyg), fit_temperature(vp, vyp_fit)
 
     def scaled(g, p):
         return apply_temperature(g, t_gs), apply_temperature(p, t_pd)
