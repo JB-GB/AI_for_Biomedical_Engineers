@@ -28,6 +28,7 @@ from rausnet.data.split import split_records
 from rausnet.evaluate import load_model
 from rausnet.explain import CamNet
 from rausnet.heatmap import normalize_cam, overlay
+from rausnet.metrics import consistent_pd_probabilities
 from rausnet.registry import Registry
 
 
@@ -67,7 +68,10 @@ def main(argv=None) -> None:
         x = load_input(root / r.gs_path, root / r.pd_path, d["image_size"])[None]
         with torch.no_grad():
             lg, lp, cg, cp = (t.numpy()[0] for t in cam_net(x))
-        g_hat, p_hat = int(lg.argmax()), int(lp.argmax())
+        p_gs = np.exp(lg - lg.max())[None]
+        p_pd = np.exp(lp - lp.max())[None]
+        p_pd = consistent_pd_probabilities(p_gs / p_gs.sum(), p_pd / p_pd.sum())
+        g_hat, p_hat = int(lg.argmax()), int(p_pd.argmax())  # PD with the GS 0 -> PD 0 rule
         mask = np.asarray(Image.open(mask_path)) > 0
         h, w = mask.shape
         pd_rgb = np.asarray(Image.open(root / r.pd_path).convert("RGB"))
