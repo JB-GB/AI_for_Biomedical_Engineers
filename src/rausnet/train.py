@@ -2,12 +2,14 @@
 
 Usage:
     python -m rausnet.train --config configs/train/baseline.yaml [--set train.epochs=5 ...]
+    python -m rausnet.train --resume outputs/<run_dir>      # continue an interrupted run (e.g. Colab)
 
 Outputs (in ``output_dir/<run_name>_<timestamp>/``):
     model.pt          best checkpoint (by validation combined-grade QWK) + config
     model_card.json   provenance: stage, data hash, split sizes, git commit, metrics
     history.csv       per-epoch losses and validation metrics
     test_metrics.json final evaluation of the best checkpoint on the frozen test split
+    last.pt           model + optimiser state after the latest epoch, for ``--resume``
 """
 
 from __future__ import annotations
@@ -125,14 +127,25 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def train(cfg: dict) -> Path:
+def _save_atomic(obj, path: Path) -> None:
+    """torch.save through a temporary file, so a disconnect never leaves a truncated checkpoint."""
+    tmp = path.with_suffix(".tmp")
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
+def train(cfg: dict, resume: str | Path | None = None) -> Path:
+    """Train from ``cfg``; with ``resume`` (a run directory) continue that run from ``last.pt``
+    using its saved config. Resumed runs are not bit-identical (data order RNG is not restored)."""
+    if resume is not None:
+        cfg = yaml.safe_load((Path(resume) / "config.yaml").read_text())
     t = cfg["train"]
     seed_everything(t["seed"])
     device = pick_device()
     loaders, splits = build_loaders(cfg)
 
     model = build_model(cfg).to(device)
-    if t.get("init_checkpoint"):
+    if t.get("init_checkpoint") and resume is None:
         state = torch.load(t["init_checkpoint"], map_location="cpu", weights_only=False)
         model.load_state_dict(state["state_dict"])
 
@@ -148,13 +161,26 @@ def train(cfg: dict) -> Path:
     amp = t["amp"] and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
 
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    run_dir = Path(cfg["output_dir"]) / f"{cfg['run_name']}_{stamp}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    best, best_epoch, history, start, stopped = -float("inf"), -1, [], 1, False
+    if resume is not None:
+        run_dir = Path(resume)
+        last = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=False)
+        model.load_state_dict(last["state_dict"])
+        opt.load_state_dict(last["optimizer"])
+        sched.load_state_dict(last["scheduler"])
+        scaler.load_state_dict(last["scaler"])
+        best, best_epoch, history, stopped = last["best"], last["best_epoch"], last["history"], last["stopped"]
+        start = last["epoch"] + 1
+        print(f"resuming {run_dir} at epoch {start}", flush=True)
+    else:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        run_dir = Path(cfg["output_dir"]) / f"{cfg['run_name']}_{stamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
 
-    best, best_epoch, history = -float("inf"), -1, []
-    for epoch in range(1, t["epochs"] + 1):
+    for epoch in range(start, t["epochs"] + 1):
+        if stopped:
+            break
         model.train()
         t0, total, n = time.time(), 0.0, 0
         for x, gs, pd in loaders["train"]:
@@ -187,11 +213,14 @@ def train(cfg: dict) -> Path:
         score = row["val_qwk"] if not np.isnan(row["val_qwk"]) else -row["train_loss"]
         if score > best:
             best, best_epoch = score, epoch
-            torch.save({"state_dict": model.state_dict(), "config": cfg, "epoch": epoch},
-                       run_dir / "model.pt")
+            _save_atomic({"state_dict": model.state_dict(), "config": cfg, "epoch": epoch}, run_dir / "model.pt")
         elif epoch - best_epoch >= t["patience"]:
             print(f"early stopping at epoch {epoch} (best {best_epoch})")
-            break
+            stopped = True
+        _save_atomic({"state_dict": model.state_dict(), "optimizer": opt.state_dict(),
+                      "scheduler": sched.state_dict(), "scaler": scaler.state_dict(), "epoch": epoch,
+                      "best": best, "best_epoch": best_epoch, "history": history, "stopped": stopped},
+                     run_dir / "last.pt")
 
     with open(run_dir / "history.csv", "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(history[0]))
@@ -229,11 +258,16 @@ def train(cfg: dict) -> Path:
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Train the grading network.")
-    parser.add_argument("--config", required=True)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--config")
+    group.add_argument("--resume", metavar="RUN_DIR", help="continue an interrupted run from its last.pt")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
                         help="override config values, e.g. train.epochs=5")
     args = parser.parse_args(argv)
-    train(load_config(args.config, overrides=args.set))
+    if args.resume:
+        train({}, resume=args.resume)
+    else:
+        train(load_config(args.config, overrides=args.set))
 
 
 if __name__ == "__main__":

@@ -69,6 +69,28 @@ def test_train_smoke(synth, tmp_path):
     assert sum(card["split_sizes"].values()) == 120
 
 
+
+def test_resume_continues_run(synth, tmp_path):
+    import csv
+
+    import yaml
+
+    cfg = load_config("configs/train/baseline.yaml", overrides=[
+        f"data.root={synth.as_posix()}", "data.image_size=48", "model.backbone=resnet18",
+        "model.pretrained=false", "train.epochs=1", "train.batch_size=16", "train.num_workers=0",
+        "train.amp=false", f"output_dir={tmp_path.as_posix()}",
+    ])
+    run = train(cfg)
+    assert torch.load(run / "last.pt", weights_only=False)["epoch"] == 1
+    saved = yaml.safe_load((run / "config.yaml").read_text())
+    saved["train"]["epochs"] = 2  # as if the session had died after epoch 1 of 2
+    (run / "config.yaml").write_text(yaml.safe_dump(saved))
+    assert train({}, resume=run) == run
+    with open(run / "history.csv", newline="") as fh:
+        assert [int(r["epoch"]) for r in csv.DictReader(fh)] == [1, 2]
+    assert torch.load(run / "last.pt", weights_only=False)["epoch"] == 2
+
+
 def test_unresolved_env_var_rejected(monkeypatch):
     monkeypatch.delenv("RAUSNET_DATA_DIR", raising=False)
     with pytest.raises(ValueError, match="environment variable"):
