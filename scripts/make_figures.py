@@ -2,6 +2,7 @@
 
 Usage: python scripts/make_figures.py outputs/<run_dir> [--out docs/paper/figures] [--prefix baseline_s2]
        python scripts/make_figures.py --calibration models/<version>/calibration.json
+       python scripts/make_figures.py --cv outputs/cv/comparison.json
 Requires the ``paper`` extra (matplotlib).
 """
 
@@ -139,10 +140,33 @@ def referral_figure(calib: dict, path: Path) -> None:
     plt.close(fig)
 
 
+def cv_figure(comparison: dict, path: Path) -> None:
+    """Forest plot: out-of-fold combined QWK difference of each recipe vs the reference (paired CI)."""
+    ref = comparison["reference"]
+    items = sorted(((n, b) for n, b in comparison["experiments"].items() if n != ref), key=lambda kv: kv[1]["diff"])
+    fig, ax = plt.subplots(figsize=(5.6, 0.45 * len(items) + 1.3))
+    ax.axvline(0, color=TEXT_2, lw=1, ls=":")
+    for y, (_, b) in enumerate(items):
+        ax.plot([b["ci_low"], b["ci_high"]], [y, y], color=SERIES[0], lw=2)
+        ax.plot([b["diff"]], [y], marker="o", ms=6, color=SERIES[0])
+        ax.annotate(f"QWK {b['b']:.3f}", (b["ci_high"], y), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=8, color=TEXT_2)
+    ax.set_yticks(range(len(items)), [n for n, _ in items])
+    ax.set_xlabel(f"Difference in out-of-fold combined QWK vs {ref} (QWK {items[0][1]['a']:.3f})")
+    ax.set_title("Recipe comparison, patient-level 5-fold CV", loc="left")
+    ax.grid(axis="x", color=GRID, lw=0.8)
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="y", length=0)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("run", nargs="?")
     parser.add_argument("--calibration", default=None, help="calibration.json -> reliability diagram")
+    parser.add_argument("--cv", default=None, help="cv comparison.json -> forest plot")
     parser.add_argument("--out", default="docs/paper/figures")
     parser.add_argument("--prefix", default=None)
     args = parser.parse_args(argv)
@@ -153,6 +177,8 @@ def main(argv=None) -> None:
         calibration_figure(calib, out / f"calibration_{calib['version']}.png")
         if "val_curve" in calib.get("referral", {}):
             referral_figure(calib, out / f"referral_{calib['version']}.png")
+    if args.cv:
+        cv_figure(json.loads(Path(args.cv).read_text()), out / "cv_comparison.png")
     if not args.run:
         return
     run = Path(args.run)
