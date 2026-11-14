@@ -103,12 +103,17 @@ gantt
 - T6.5 PyInstaller installer for Windows; Docker Compose for research servers. ✅ (one-folder bundle + Docker; `docs/04_deployment.md`)
 - T6.3 "Submit correction" button: clinician corrects the grade → feeds `data/incoming/`. ✅
 - T6.4 Usability test with ≥ 3 non-technical users (SUS questionnaire → paper).
+- T6.6–T6.10 Accessible interface for single-image checks and continuous improvement — plan in
+  `docs/06_interface_plan.md` (F1 workspace + improvement panel · F2 accessible analysis flow ·
+  F3 corrections · F4 local improvement + history/rollback · F5 accessibility audit + SUS).
 
 ### M7 — Multi-runtime execution
 - T7.1 Local: one-command install + run (CPU & GPU). ✅ (`scripts/setup_env.py`)
 - T7.2 Colab: notebook that clones repo, mounts Drive data, trains, saves to Drive (see `03_colab_and_runners.md`). ✅ built (auto-resume); first Colab run pending
 - T7.3 Self-hosted GitHub runner: manual-dispatch training workflow. ✅ built + CI on hosted runners; runner registration pending
 - T7.4 Same config produces equivalent results in all three (log differences). 🟡 method + local CPU vs GPU ✅; Colab/runner pending
+- T7.5 One-click continuous improvement of the global model: shared workspace + `rausnet.improve` +
+  `notebooks/colab_improve.ipynb` (Colab as compute). ✅ built and tested locally; first Colab run pending
 
 ### M8 — Validation & paper
 - T8.1 Final evaluation on held-out test set; compare with literature table.
