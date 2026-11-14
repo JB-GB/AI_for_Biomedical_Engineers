@@ -21,6 +21,10 @@ on:
       add:
         description: "retrain only: space-separated manifests relative to the data root"
         default: ""
+      from_scratch:
+        description: "retrain only: train the candidate from scratch (new recipe) instead of fine-tuning"
+        type: boolean
+        default: false
       export:
         description: "retrain only: calibrate + export ONNX when the candidate is promoted"
         type: boolean
@@ -49,6 +53,7 @@ jobs:
       OVERRIDES: ${{ inputs.overrides }}
       ADD: ${{ inputs.add }}
       EXPORT: ${{ inputs.export }}
+      FROM_SCRATCH: ${{ inputs.from_scratch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,8 +72,9 @@ jobs:
       - name: Retrain
         if: inputs.task == 'retrain'
         run: |
-          [ -n "$ADD" ] || { echo "::error::retrain needs at least one manifest in 'add'"; exit 1; }
           args=(); for m in $ADD; do args+=(--add "$m"); done
+          [ "$FROM_SCRATCH" = "true" ] && args+=(--from-scratch)
+          [ ${#args[@]} -gt 0 ] || { echo "::error::retrain needs manifests in 'add' or from_scratch"; exit 1; }
           current() { "$PY" -c "import os; from rausnet.registry import Registry; c = Registry(os.environ['MODELS_DIR']).current(); print(c.version if c else '')"; }
           before=$(current)
           "$PY" -m rausnet.retrain --config "$CONFIG" "${args[@]}" \
