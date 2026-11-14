@@ -2,6 +2,7 @@
 
     python -m rausnet.retrain --config configs/retrain/default.yaml --add hospital/batch1/manifest.csv
     python -m rausnet.retrain --config configs/retrain/default.yaml --from-scratch --set data.augment=us
+    python -m rausnet.retrain ... --no-postprocess     # skip calibration + ONNX export
 
 Steps:
 1. Merge the current model's dataset with the new source manifests into a new
@@ -14,6 +15,9 @@ Steps:
      combined QWK; reject only if the whole 95 % CI is below 0 (significantly worse).
    - ``tolerance``: promote if candidate >= current - tolerance.
 5. Register the version (current / rejected) with a retrain report.
+6. If promoted (and ``postprocess`` is enabled): calibrate (``rausnet.calibrate``) and export
+   ONNX (``rausnet.export``) so the new model is ready to serve. Failures are recorded in the
+   report and never undo the promotion.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import json
 import math
 import shutil
 import time
+import warnings
 from pathlib import Path
 
 from rausnet.data.manifest import read_manifest
@@ -89,12 +94,43 @@ def _summary(report: dict | None) -> dict:
     return {k: c[k] for k in ("qwk", "accuracy", "balanced_accuracy", "auc_ge2", "n")}
 
 
-def retrain(cfg: dict, add: list[str], from_scratch: bool = False) -> ModelEntry:
+def postprocess(cfg: dict, version: str) -> dict:
+    """Calibrate then export ``version``; return what was done (paths or errors), never raise."""
+    pp = cfg.get("postprocess") or {}
+    models_dir, out = Path(cfg["models_dir"]), {}
+    if pp.get("calibrate", True):
+        try:
+            from rausnet.calibrate import calibrate
+
+            calibrate(models_dir, version, cfg["data"]["root"], pp.get("target_accuracy", 0.98),
+                      pp.get("gate", True))
+            out["calibration"] = str(models_dir / version / "calibration.json")
+        except Exception as e:  # the promotion stands; record and continue
+            out["calibration_error"] = f"{type(e).__name__}: {e}"
+            warnings.warn(f"{version}: calibration failed ({out['calibration_error']})", stacklevel=2)
+    if pp.get("export", True):
+        try:
+            from rausnet.export import export_version
+
+            out["onnx"] = str(export_version(models_dir, version))
+            out["sidecar"] = str(models_dir / version / "model.json")
+        except ImportError as e:
+            out["export_error"] = f"{type(e).__name__}: {e}"
+            warnings.warn(f"{version}: ONNX export skipped, missing dependency ({e}); install onnx and "
+                          f"onnxscript, then run python -m rausnet.export --version {version}", stacklevel=2)
+        except Exception as e:
+            out["export_error"] = f"{type(e).__name__}: {e}"
+            warnings.warn(f"{version}: ONNX export failed ({out['export_error']})", stacklevel=2)
+    return out
+
+
+def retrain(cfg: dict, add: list[str], from_scratch: bool = False, run_postprocess: bool = True) -> ModelEntry:
     """Merge ``add`` into the current dataset, train a candidate and apply the promotion rule.
 
     By default the candidate is fine-tuned from the current model. ``from_scratch`` trains it
     with ``cfg['model']``/``cfg['train']`` from the start instead (a new recipe: backbone,
     augmentation...); ``add`` may then be empty, and the comparison uses the same frozen test split.
+    A promoted candidate is then calibrated and exported unless ``run_postprocess`` is False.
     """
     data_root = Path(cfg["data"]["root"])
     reg = Registry(cfg["models_dir"])
@@ -167,7 +203,8 @@ def retrain(cfg: dict, add: list[str], from_scratch: bool = False) -> ModelEntry
         "promotion_rule": promo, "promoted": promote, "reason": reason,
         "paired_bootstrap": boot, "candidate": cand_report, "current": cur_report,
     }
-    (vdir / "retrain_report.json").write_text(json.dumps(report, indent=2))
+    report_path = vdir / "retrain_report.json"
+    report_path.write_text(json.dumps(report, indent=2))
 
     entry = ModelEntry(
         version=version,
@@ -182,6 +219,9 @@ def retrain(cfg: dict, add: list[str], from_scratch: bool = False) -> ModelEntry
     )
     reg.add(entry, promote)
     print(f"{version}: {'PROMOTED' if promote else 'REJECTED'} ({reason})")
+    if promote:
+        report["postprocess"] = postprocess(cfg, version) if run_postprocess else "skipped (--no-postprocess)"
+        report_path.write_text(json.dumps(report, indent=2))
     return entry
 
 
@@ -192,11 +232,13 @@ def main(argv=None) -> None:
                         help="source manifest inside the data root (repeatable)")
     parser.add_argument("--from-scratch", action="store_true",
                         help="train the candidate from the config's model/recipe instead of fine-tuning")
+    parser.add_argument("--no-postprocess", action="store_true",
+                        help="do not calibrate and export ONNX after a promotion")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE")
     args = parser.parse_args(argv)
     if not args.add and not args.from_scratch:
         parser.error("pass --add MANIFEST and/or --from-scratch")
-    retrain(load_config(args.config, overrides=args.set), args.add, args.from_scratch)
+    retrain(load_config(args.config, overrides=args.set), args.add, args.from_scratch, not args.no_postprocess)
 
 
 if __name__ == "__main__":

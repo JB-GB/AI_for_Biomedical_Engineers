@@ -1,5 +1,7 @@
 # Retraining: python -m rausnet.retrain --config configs/retrain/default.yaml --add <manifest> [--add ...]
 # The first call (empty registry) trains from scratch; later calls fine-tune the current model.
+# A promoted model is calibrated and exported to ONNX automatically (section postprocess);
+# add --no-postprocess to skip both.
 output_dir: outputs
 models_dir: models          # registry.json + one folder per version (git-ignored)
 
@@ -39,3 +41,9 @@ promotion:
   metric: qwk
   tolerance: 0.0
   sources: null              # e.g. [hospital] to judge only on clinical test images
+
+postprocess:                 # only after a promotion; failures are logged and never undo it
+  calibrate: true            # rausnet.calibrate -> models/<v>/calibration.json
+  target_accuracy: 0.98      # refer-to-specialist threshold target (val split); a clinical choice
+  gate: true                 # keep temperatures only where cross-fitting shows they help
+  export: true               # rausnet.export -> models/<v>/model.onnx + model.json (needs onnx, onnxscript)

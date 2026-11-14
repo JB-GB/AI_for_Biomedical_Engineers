@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import math
 
@@ -8,7 +9,7 @@ pytest.importorskip("timm")
 
 from rausnet.data.synthetic import generate_dataset
 from rausnet.registry import Registry
-from rausnet.retrain import bootstrap_decision, promotion_decision, retrain
+from rausnet.retrain import bootstrap_decision, main, promotion_decision, retrain
 from rausnet.train import load_config
 
 
@@ -38,23 +39,38 @@ def test_retrain_lifecycle(tmp_path):
     for name, seed, n in (("synthA", 1, 20), ("synthB", 2, 8), ("synthC", 3, 8)):
         generate_dataset(root / name, n_patients=n, seed=seed, size=64)
 
-    def cfg(tolerance):
-        return load_config("configs/retrain/default.yaml", overrides=[
+    def sets(tolerance):
+        return [
             f"data.root={root.as_posix()}", "data.image_size=64", "model.backbone=resnet18",
             "model.pretrained=false", "train.epochs=1", "train.finetune_epochs=1", "train.batch_size=16",
             "train.amp=false", f"output_dir={(tmp_path / 'out').as_posix()}",
             f"models_dir={(tmp_path / 'models').as_posix()}", "promotion.rule=tolerance",
             f"promotion.tolerance={tolerance}", "promotion.n_boot=50",
-        ])
+        ]
 
-    first = retrain(cfg(0.0), ["synthA/manifest.csv"])
+    def cfg(tolerance):
+        return load_config("configs/retrain/default.yaml", overrides=sets(tolerance))
+
+    models = tmp_path / "models"
+    has_onnx = all(importlib.util.find_spec(m) for m in ("onnx", "onnxscript", "onnxruntime"))
+
+    first = retrain(cfg(0.0), ["synthA/manifest.csv"], run_postprocess=False)
     assert first.status == "current" and first.parent is None and first.stage == "S2"
 
     second = retrain(cfg(10.0), ["synthB/manifest.csv"])  # huge tolerance -> always promoted
     assert second.status == "current" and second.parent == "v0001"
+    assert not (models / "v0001/calibration.json").exists()  # postprocess skipped
+    pp = json.loads((models / "v0002/retrain_report.json").read_text())["postprocess"]
+    assert (models / "v0002/calibration.json").exists() and pp["calibration"].endswith("calibration.json")
+    if has_onnx:
+        assert (models / "v0002/model.onnx").exists() and (models / "v0002/model.json").exists()
+    else:
+        assert "export_error" in pp
 
     third = retrain(cfg(-10.0), ["synthC/manifest.csv"])  # impossible bar -> rejected
     assert third.status == "rejected"
+    assert not any((models / "v0003" / f).exists() for f in ("calibration.json", "model.onnx"))
+    assert "postprocess" not in json.loads((models / "v0003/retrain_report.json").read_text())
 
     reg = Registry(tmp_path / "models")
     assert [e.status for e in reg.entries] == ["archived", "current", "rejected"]
@@ -67,7 +83,11 @@ def test_retrain_lifecycle(tmp_path):
     with pytest.raises(ValueError, match="no new images"):
         retrain(cfg(0.0), ["synthA/manifest.csv"])
 
-    fourth = retrain(cfg(10.0), [], from_scratch=True)  # new recipe, same data
+    main(["--config", "configs/retrain/default.yaml", "--from-scratch", "--no-postprocess",
+          "--set", *sets(10.0)])  # new recipe, same data
+    fourth = Registry(models).get("v0004")
     report = json.loads((tmp_path / "models/v0004/retrain_report.json").read_text())
+    assert report["postprocess"].startswith("skipped")
+    assert not any((models / "v0004" / f).exists() for f in ("calibration.json", "model.onnx"))
     assert fourth.status == "current" and report["mode"] == "from_scratch" and report["new_images"] == 0
     assert fourth.dataset_sha256 == Registry(tmp_path / "models").get("v0002").dataset_sha256
