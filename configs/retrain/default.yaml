@@ -8,6 +8,7 @@ data:
   image_size: 224
   split_ratios: [0.70, 0.15, 0.15]
   split_salt: rausnet-split-v1   # never change: keeps the test set frozen across versions
+  augment: basic             # basic | us
 
 model:                       # used only for the first model; later versions reuse the parent's
   backbone: efficientnet_b0

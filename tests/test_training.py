@@ -5,7 +5,7 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("timm")
 
-from rausnet.data.dataset import IGNORE_INDEX, JointDataset, load_input  # noqa: E402
+from rausnet.data.dataset import AUGMENTATIONS, IGNORE_INDEX, MEAN, STD, JointDataset, load_input  # noqa: E402
 from rausnet.data.manifest import read_manifest  # noqa: E402
 from rausnet.data.synthetic import generate_dataset  # noqa: E402
 from rausnet.models import GradingNet  # noqa: E402
@@ -43,6 +43,25 @@ def test_pd_masking_on_gs0():
     assert pd_target(1, 2, mask_gs0=True) == 2
     gs, pd = torch.tensor([0, 1, 0, 3]), torch.tensor([0, 2, IGNORE_INDEX, 3])
     assert mask_pd_targets(gs, pd).tolist() == [IGNORE_INDEX, 2, IGNORE_INDEX, 3]
+
+
+
+@pytest.mark.parametrize("name", sorted(AUGMENTATIONS))
+def test_augmentations_keep_shape_range_and_grey(name, synth):
+    r = read_manifest(synth / "manifest.csv")[0]
+    x = load_input(synth / r.gs_path, None, 64)  # no PD image: PD channels are copies of GS
+    torch.manual_seed(0)
+    for _ in range(5):
+        y = AUGMENTATIONS[name](x.clone())
+        assert y.shape == x.shape and torch.isfinite(y).all()
+        img = y * STD + MEAN
+        assert img.min() >= -1e-6 and img.max() <= 1 + 1e-6
+        assert torch.allclose(y[1:], y[:1].expand(3, -1, -1), atol=1e-5)  # augmentation never invents Doppler
+
+
+def test_unknown_augmentation_rejected(synth):
+    with pytest.raises(ValueError, match="augment"):
+        JointDataset(read_manifest(synth / "manifest.csv"), synth, augment="nope")
 
 
 def test_load_input_shape(synth):

@@ -9,6 +9,7 @@ data:
   image_size: 224
   split_ratios: [0.70, 0.15, 0.15]
   split_salt: rausnet-split-v1
+  augment: basic          # basic | us (ultrasound acquisition variability, T4.2)
 
 model:
   backbone: efficientnet_b0

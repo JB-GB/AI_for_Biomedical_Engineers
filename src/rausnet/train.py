@@ -100,7 +100,7 @@ def build_loaders(cfg: dict):
             os.environ.setdefault(var, "1")
     loaders = {}
     for name, recs in splits.items():
-        ds = JointDataset(recs, root, d["image_size"], train=name == "train")
+        ds = JointDataset(recs, root, d["image_size"], train=name == "train", augment=d.get("augment", "basic"))
         loaders[name] = DataLoader(
             ds, batch_size=t["batch_size"], shuffle=name == "train", num_workers=workers,
             pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0 and bool(recs),

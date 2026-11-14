@@ -56,13 +56,58 @@ def _augment(x: torch.Tensor) -> torch.Tensor:
     return (x.clamp(0, 1) - MEAN) / STD
 
 
+def _uniform(lo: float, hi: float) -> float:
+    return lo + (hi - lo) * torch.rand(1).item()
+
+
+def _augment_us(x: torch.Tensor) -> torch.Tensor:
+    """Ultrasound acquisition variability, on top of flip/crop (T4.2).
+
+    Every transform is grade-preserving: geometry and intensity change, the size of the
+    synovial region and of the Doppler signal relative to it do not.
+    - probe tilt: rotation up to +/-10 degrees, zoom 0.75-1 (depth setting);
+    - time-gain compensation: gain ramp along depth (rows), +/-25 % top to bottom;
+    - dynamic range / contrast: gamma 0.7-1.4;
+    - multiplicative speckle: gamma-distributed field (shape 8-30), same on all channels;
+    - Doppler gain: colour excess over the grey background scaled 0.75-1.25.
+    """
+    size = x.shape[-1]
+    img = x * STD + MEAN                                   # back to [0, 1]
+    if torch.rand(1) < 0.5:
+        img = img.flip(-1)
+    angle = torch.deg2rad(torch.tensor(_uniform(-10, 10)))
+    zoom = _uniform(0.75, 1.0)
+    shift = (torch.rand(2) * 2 - 1) * (1 - zoom)
+    cos, sin = torch.cos(angle) * zoom, torch.sin(angle) * zoom
+    theta = torch.tensor([[cos, -sin, shift[0]], [sin, cos, shift[1]]], dtype=img.dtype)[None]
+    grid = F.affine_grid(theta, (1, *img.shape), align_corners=False)
+    img = F.grid_sample(img[None], grid, mode="bilinear", padding_mode="zeros", align_corners=False)[0]
+
+    gs, pd = img[:1], img[1:]
+    colour = pd - gs                                        # Doppler signal over the B-mode background
+    gs = gs * (0.8 + 0.4 * torch.rand(1))                   # overall gain
+    tgc = 1 + _uniform(-0.25, 0.25) * torch.linspace(-1, 1, size, dtype=img.dtype)[:, None]
+    gs = (gs * tgc).clamp(0, 1) ** _uniform(0.7, 1.4)
+    k = _uniform(8, 30)
+    speckle = torch.distributions.Gamma(k, k).sample((1, size, size)).to(img.dtype)
+    gs = gs * speckle
+    img = torch.cat([gs, gs + colour * _uniform(0.75, 1.25)], 0)
+    return (img.clamp(0, 1) - MEAN) / STD
+
+
+AUGMENTATIONS = {"basic": _augment, "us": _augment_us}
+
+
 class JointDataset(Dataset):
     def __init__(self, records: Sequence[Record], root: str | Path, size: int = 224,
-                 train: bool = False):
+                 train: bool = False, augment: str = "basic"):
+        if augment not in AUGMENTATIONS:
+            raise ValueError(f"augment must be one of {sorted(AUGMENTATIONS)}, got {augment!r}")
         self.records = list(records)
         self.root = Path(root)
         self.size = size
         self.train = train
+        self.augment = AUGMENTATIONS[augment]
 
     def __len__(self) -> int:
         return len(self.records)
@@ -71,6 +116,6 @@ class JointDataset(Dataset):
         r = self.records[i]
         x = load_input(self.root / r.gs_path, self.root / r.pd_path if r.pd_path else None, self.size)
         if self.train:
-            x = _augment(x)
+            x = self.augment(x)
         pd_label = r.pd_grade if r.pd_path else IGNORE_INDEX
         return x, r.gs_grade, pd_label
