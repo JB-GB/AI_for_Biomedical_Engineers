@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from rausnet.calibrate import apply_temperature, cross_fit_gain, fit_temperature
+from rausnet.calibrate import apply_temperature, cross_fit_gain, degenerate_fit, fit_temperature
 from rausnet.metrics import negative_log_likelihood
 
 
@@ -50,3 +50,17 @@ def test_cross_fit_gain_detects_overconfidence_and_calibrated_models():
     assert cross_fit_gain(probs, y, groups)["helps"]
     probs, y = _sharp_probs(2000, conf=0.7, acc=0.7, seed=2)   # already calibrated -> no gain
     assert not cross_fit_gain(probs, y, groups)["helps"]
+
+
+def test_degenerate_fit_flags_separable_data_and_bounds():
+    rng = np.random.default_rng(1)
+    y = rng.integers(0, 4, 200)
+    z = rng.normal(size=(200, 4))
+    z[np.arange(200), y] += 8                      # every prediction correct
+    p = softmax(z)
+    assert degenerate_fit(p, y, fit_temperature(p, y)) is not None
+    z[:20] = rng.normal(size=(20, 4))              # some errors: a real minimum exists
+    p = softmax(z)
+    t = fit_temperature(p, y)
+    assert degenerate_fit(p, y, t) is None
+    assert degenerate_fit(p, y, 0.05) == "fitted temperature at search bound"

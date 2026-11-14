@@ -35,7 +35,10 @@ def apply_temperature(probs: np.ndarray, t: float) -> np.ndarray:
     return e / e.sum(axis=1, keepdims=True)
 
 
-def fit_temperature(probs: np.ndarray, y: np.ndarray, lo: float = 0.05, hi: float = 20.0) -> float:
+T_BOUNDS = (0.05, 20.0)
+
+
+def fit_temperature(probs: np.ndarray, y: np.ndarray, lo: float = T_BOUNDS[0], hi: float = T_BOUNDS[1]) -> float:
     """Temperature minimising NLL (golden-section search on log T)."""
     mask = y >= 0
     probs, y = probs[mask], y[mask]
@@ -51,6 +54,21 @@ def fit_temperature(probs: np.ndarray, y: np.ndarray, lo: float = 0.05, hi: floa
             a, c = c, d
             d = a + g * (b - a)
     return float(np.exp((a + b) / 2))
+
+
+def degenerate_fit(probs: np.ndarray, y: np.ndarray, t: float, rel: float = 0.02) -> str | None:
+    """Reason why a fitted temperature is not a calibration, or None.
+
+    If every fitting prediction is correct (perfect separation) the NLL decreases monotonically
+    as T -> 0: there is no minimum and the "fit" only reflects the search bound or float
+    precision, making probabilities near-hard. Cross-fitting cannot detect it (both halves agree).
+    """
+    mask = y >= 0
+    if mask.any() and (probs[mask].argmax(1) == y[mask]).all():
+        return "validation predictions perfectly separated: no NLL minimum"
+    if abs(np.log(t / T_BOUNDS[0])) < rel or abs(np.log(T_BOUNDS[1] / t)) < rel:
+        return "fitted temperature at search bound"
+    return None
 
 
 def cross_fit_gain(probs: np.ndarray, y: np.ndarray, groups) -> dict:
@@ -122,6 +140,10 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
     patients = [r.patient_id for r in val_recs]
     gating = {"gs": cross_fit_gain(vg, vyg, patients), "pd": cross_fit_gain(vp, vyp_fit, patients)}
     fitted = {"gs": t_gs, "pd": t_pd}
+    for head, (p, yy) in {"gs": (vg, vyg), "pd": (vp, vyp_fit)}.items():
+        reason = degenerate_fit(p, yy, fitted[head])
+        if reason:
+            gating[head] = {**gating[head], "helps": False, "reason": reason}
     if gate:
         t_gs = t_gs if gating["gs"]["helps"] else 1.0
         t_pd = t_pd if gating["pd"]["helps"] else 1.0
