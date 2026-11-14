@@ -7,6 +7,7 @@ from rausnet.metrics import (
     combined_probabilities,
     confusion_matrix,
     consistent_pd_probabilities,
+    coverage_curve,
     quadratic_weighted_kappa,
     referral_outcome,
     referral_threshold,
@@ -143,3 +144,10 @@ def test_referral_threshold_never_splits_ties_and_can_refer_all():
     probs = np.array([[0.7, 0.3, 0, 0], [0.7, 0.3, 0, 0]])
     r = referral_threshold(np.array([0, 1]), probs, target_accuracy=0.9)
     assert r["coverage"] == 0.0 and r["threshold"] > 1.0
+
+
+def test_coverage_curve_accuracy_rises_as_coverage_falls():
+    probs = np.array([[0.9, 0.1, 0, 0], [0.8, 0.2, 0, 0], [0.7, 0.3, 0, 0], [0.6, 0.4, 0, 0]])
+    curve = coverage_curve(np.array([0, 0, 1, 1]), probs, [0.5, 1.0])
+    assert curve[0] == {"coverage": 0.5, "accuracy": 1.0, "min_confidence": 0.8}
+    assert curve[1]["accuracy"] == 0.5

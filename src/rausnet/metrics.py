@@ -209,3 +209,17 @@ def referral_outcome(y_true, probs: np.ndarray, threshold: float) -> dict:
     return {"threshold": threshold, "coverage": float(keep.mean()), "accuracy_accepted": acc(keep),
             "accuracy_referred": acc(~keep), "accuracy_all": acc(np.ones_like(keep)), "n": len(y_true),
             "n_referred": int((~keep).sum())}
+
+
+def coverage_curve(y_true, probs: np.ndarray, coverages=None) -> list[dict]:
+    """Accuracy of the most confident fraction of cases (risk-coverage curve)."""
+    y_true = np.asarray(y_true, int)
+    coverages = np.linspace(0.5, 1.0, 11) if coverages is None else coverages
+    order = np.argsort(-probs.max(axis=1), kind="stable")
+    correct = probs.argmax(axis=1)[order] == y_true[order]
+    out = []
+    for c in coverages:
+        n = max(1, round(c * len(order)))
+        out.append({"coverage": float(n / len(order)), "accuracy": float(correct[:n].mean()),
+                    "min_confidence": float(probs.max(axis=1)[order][n - 1])})
+    return out

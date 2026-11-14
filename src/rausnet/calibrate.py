@@ -94,7 +94,7 @@ def _summary(p_gs, p_pd, y_gs, y_pd) -> dict:
 
 
 def calibrate(models_dir: str | Path = "models", version: str | None = None, data_root: str | None = None,
-              target_accuracy: float = 0.95, gate: bool = True) -> dict:
+              target_accuracy: float = 0.98, gate: bool = True) -> dict:
     """Fit per-head temperatures (kept only where cross-fitting shows they help, if ``gate``) and
     the "refer to specialist" confidence threshold on the validation split; report both on test."""
     import torch
@@ -130,7 +130,7 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
         return apply_temperature(g, t_gs), apply_temperature(p, t_pd)
 
     from rausnet.evaluate import combined_labels
-    from rausnet.metrics import referral_outcome, referral_threshold
+    from rausnet.metrics import coverage_curve, referral_outcome, referral_threshold
 
     v_comb = combined_probabilities(*scaled(vg, vp))
     t_comb = combined_probabilities(*scaled(tg, tp))
@@ -143,7 +143,9 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
         "fitted_temperature": fitted,
         "gating": gating,
         "referral": {**ref, "val_outcome": referral_outcome(combined_labels(vyg, vyp), v_comb, ref["threshold"]),
-                     "test_outcome": referral_outcome(combined_labels(tyg, typ), t_comb, ref["threshold"])},
+                     "test_outcome": referral_outcome(combined_labels(tyg, typ), t_comb, ref["threshold"]),
+                     "val_curve": coverage_curve(combined_labels(vyg, vyp), v_comb),
+                     "test_curve": coverage_curve(combined_labels(tyg, typ), t_comb)},
         "val": {"before": _summary(vg, vp, vyg, vyp), "after": _summary(*scaled(vg, vp), vyg, vyp)},
         "test": {"before": _summary(tg, tp, tyg, typ), "after": _summary(*scaled(tg, tp), tyg, typ)},
     }
@@ -164,8 +166,8 @@ def main(argv=None) -> None:
     parser.add_argument("--models-dir", default="models")
     parser.add_argument("--version", default=None)
     parser.add_argument("--data-root", default=os.environ.get("RAUSNET_DATA_DIR"))
-    parser.add_argument("--target-accuracy", type=float, default=0.95,
-                        help="accuracy required on automatically graded cases (val split)")
+    parser.add_argument("--target-accuracy", type=float, default=0.98,
+                        help="accuracy required on automatically graded cases (val split); a clinical choice")
     parser.add_argument("--no-gate", action="store_true", help="always apply the fitted temperatures")
     args = parser.parse_args(argv)
     calibrate(args.models_dir, args.version, args.data_root, args.target_accuracy, not args.no_gate)
