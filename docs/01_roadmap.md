@@ -85,11 +85,11 @@ gantt
 
 ### M4 — Improved model & evaluation
 - T4.1 4-class grading, class-imbalance handling (weighted loss / focal loss). ✅ (weighted CE; GS0 → PD0 rule + PD loss masking, v0004)
-- T4.2 Augmentations realistic for US (speckle noise, gain, depth, flips).
-- T4.3 Compare backbones (CNN vs ViT/US foundation model); ablations.
+- T4.2 Augmentations realistic for US (speckle noise, gain, depth, flips). ✅ (`augment: us`; fixed-noise bug found and fixed, v0005)
+- T4.3 Compare backbones (CNN vs ViT/US foundation model); ablations. ✅ on synthetic (B0 ≈ ConvNeXt > ResNet-34, DeiT); repeat on real data
 - T4.4 Explainability: Grad-CAM overlays for the GUI and the paper. ✅ (exact CAM in ONNX graph)
-- T4.5 Calibration (temperature scaling) and confidence thresholds for "refer to specialist". Temperature scaling ✅; thresholds pending
-- T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap). CIs ✅, k-fold pending.
+- T4.5 Calibration (temperature scaling) and confidence thresholds for "refer to specialist". Temperature scaling ✅ (gated); referral threshold ✅ (API + app)
+- T4.6 k-fold cross-validation at patient level; 95 % CIs (bootstrap). CIs ✅, k-fold ✅ (`rausnet.cv`).
 
 ### M5 — Retraining loop
 - T5.1 `data/incoming/` drop-zone + validation of new labelled entries. ✅

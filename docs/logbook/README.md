@@ -24,3 +24,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-13 | [Grad-CAM explanations & calibration](2026-11-13_M4-T4.4_gradcam-calibration.md) | M4 | Result / Correction |
 | 2026-11-13 | [PD scoring rule & loss masking (v0004)](2026-11-13_M4-T4.1_pd-gs0-rule.md) | M4 | Result / Decision |
 | 2026-11-13 | [Multi-runtime: local, Colab, runner](2026-11-13_M7-T7.1_multi-runtime.md) | M7 | Result |
+| 2026-11-13 | [Augmentation bug, backbone CV, referral threshold (v0005)](2026-11-13_M4-T4.2_augment-backbones-cv-referral.md) | M4 | Result / Decision |
