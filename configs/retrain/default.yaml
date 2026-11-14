@@ -47,3 +47,7 @@ postprocess:                 # only after a promotion; failures are logged and n
   target_accuracy: 0.98      # refer-to-specialist threshold target (val split); a clinical choice
   gate: true                 # keep temperatures only where cross-fitting shows they help
   export: true               # rausnet.export -> models/<v>/model.onnx + model.json (needs onnx, onnxscript)
+
+improve:                     # python -m rausnet.improve run --workspace <shared folder> (Colab: notebooks/colab_improve.ipynb)
+  min_new_images: 20         # retrain only when at least this many unseen images (e.g. corrections) are waiting
+  lock_stale_hours: 6        # a lock older than this is from a disconnected session and is taken over
