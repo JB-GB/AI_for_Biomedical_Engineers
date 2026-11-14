@@ -53,6 +53,30 @@ def fit_temperature(probs: np.ndarray, y: np.ndarray, lo: float = 0.05, hi: floa
     return float(np.exp((a + b) / 2))
 
 
+def cross_fit_gain(probs: np.ndarray, y: np.ndarray, groups) -> dict:
+    """Does temperature scaling help on data it was not fitted on?
+
+    Patients are split into two halves by hash; T is fitted on one half and scored (NLL) on
+    the other, both ways. ``helps`` is True when the cross-fitted NLL beats T = 1.
+    """
+    import hashlib
+
+    groups = np.asarray(groups)
+    half = np.array([hashlib.sha256(f"calib:{g}".encode()).digest()[0] % 2 for g in groups])
+    labelled = y >= 0
+    nll_t, nll_1 = 0.0, 0.0
+    for h in (0, 1):
+        fit, score = (half == h) & labelled, (half != h) & labelled
+        if not fit.any() or not score.any():
+            return {"helps": False, "reason": "too few patients for cross-fitting"}
+        t = fit_temperature(probs[fit], y[fit])
+        w = score.sum()
+        nll_t += w * negative_log_likelihood(y[score], apply_temperature(probs[score], t))
+        nll_1 += w * negative_log_likelihood(y[score], probs[score])
+    n = labelled.sum()
+    return {"helps": bool(nll_t < nll_1), "cross_fit_nll": float(nll_t / n), "nll_t1": float(nll_1 / n)}
+
+
 def _summary(p_gs, p_pd, y_gs, y_pd) -> dict:
     from rausnet.evaluate import combined_labels
 
@@ -69,7 +93,10 @@ def _summary(p_gs, p_pd, y_gs, y_pd) -> dict:
     }
 
 
-def calibrate(models_dir: str | Path = "models", version: str | None = None, data_root: str | None = None) -> dict:
+def calibrate(models_dir: str | Path = "models", version: str | None = None, data_root: str | None = None,
+              target_accuracy: float = 0.95, gate: bool = True) -> dict:
+    """Fit per-head temperatures (kept only where cross-fitting shows they help, if ``gate``) and
+    the "refer to specialist" confidence threshold on the validation split; report both on test."""
     import torch
 
     from rausnet.evaluate import predict_checkpoint
@@ -87,19 +114,36 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
         cfg["data"]["root"] = data_root
     cfg = load_config(None, cfg)
 
-    _, (vg, vp, vyg, vyp) = predict_checkpoint(ckpt, cfg, "val")
+    val_recs, (vg, vp, vyg, vyp) = predict_checkpoint(ckpt, cfg, "val")
     _, (tg, tp, tyg, typ) = predict_checkpoint(ckpt, cfg, "test")
     # a PD head trained with pd_mask_gs0 never saw GS 0 joints: fit its temperature where PD is defined
     vyp_fit = np.where(vyg == 0, -1, vyp) if cfg["train"].get("pd_mask_gs0") else vyp
     t_gs, t_pd = fit_temperature(vg, vyg), fit_temperature(vp, vyp_fit)
+    patients = [r.patient_id for r in val_recs]
+    gating = {"gs": cross_fit_gain(vg, vyg, patients), "pd": cross_fit_gain(vp, vyp_fit, patients)}
+    fitted = {"gs": t_gs, "pd": t_pd}
+    if gate:
+        t_gs = t_gs if gating["gs"]["helps"] else 1.0
+        t_pd = t_pd if gating["pd"]["helps"] else 1.0
 
     def scaled(g, p):
         return apply_temperature(g, t_gs), apply_temperature(p, t_pd)
 
+    from rausnet.evaluate import combined_labels
+    from rausnet.metrics import referral_outcome, referral_threshold
+
+    v_comb = combined_probabilities(*scaled(vg, vp))
+    t_comb = combined_probabilities(*scaled(tg, tp))
+    ref = referral_threshold(combined_labels(vyg, vyp), v_comb, target_accuracy)
     result = {
         "version": entry.version,
-        "method": "temperature scaling per head, NLL on validation split",
+        "method": "temperature scaling per head, NLL on validation split"
+                  + (", kept only if 2-fold patient cross-fitting improves NLL" if gate else ""),
         "temperature": {"gs": t_gs, "pd": t_pd},
+        "fitted_temperature": fitted,
+        "gating": gating,
+        "referral": {**ref, "val_outcome": referral_outcome(combined_labels(vyg, vyp), v_comb, ref["threshold"]),
+                     "test_outcome": referral_outcome(combined_labels(tyg, typ), t_comb, ref["threshold"])},
         "val": {"before": _summary(vg, vp, vyg, vyp), "after": _summary(*scaled(vg, vp), vyg, vyp)},
         "test": {"before": _summary(tg, tp, tyg, typ), "after": _summary(*scaled(tg, tp), tyg, typ)},
     }
@@ -108,6 +152,10 @@ def calibrate(models_dir: str | Path = "models", version: str | None = None, dat
     b, a = result["test"]["before"]["combined"], result["test"]["after"]["combined"]
     print(f"{entry.version}: T_gs={t_gs:.3f} T_pd={t_pd:.3f} | test combined ECE {b['ece']:.4f} -> {a['ece']:.4f}, "
           f"NLL {b['nll']:.4f} -> {a['nll']:.4f} -> {out}")
+    to = result["referral"]["test_outcome"]
+    print(f"refer below confidence {ref['threshold']:.3f} (target accuracy {target_accuracy:.0%} on val, coverage "
+          f"{ref['coverage']:.0%}) | test: coverage {to['coverage']:.0%}, accuracy accepted {to['accuracy_accepted']}, "
+          f"referred {to['n_referred']} with accuracy {to['accuracy_referred']}")
     return result
 
 
@@ -116,8 +164,11 @@ def main(argv=None) -> None:
     parser.add_argument("--models-dir", default="models")
     parser.add_argument("--version", default=None)
     parser.add_argument("--data-root", default=os.environ.get("RAUSNET_DATA_DIR"))
+    parser.add_argument("--target-accuracy", type=float, default=0.95,
+                        help="accuracy required on automatically graded cases (val split)")
+    parser.add_argument("--no-gate", action="store_true", help="always apply the fitted temperatures")
     args = parser.parse_args(argv)
-    calibrate(args.models_dir, args.version, args.data_root)
+    calibrate(args.models_dir, args.version, args.data_root, args.target_accuracy, not args.no_gate)
 
 
 if __name__ == "__main__":
