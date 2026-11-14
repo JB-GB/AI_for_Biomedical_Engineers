@@ -1,0 +1,18 @@
+# Device presets for rausnet.data.deid: margins with burned-in text to crop and extra
+# rectangles to black out. Values < 1 are fractions of the image side, otherwise pixels.
+# blackout rectangles are [x0, y0, x1, y1] in original-image coordinates (applied before the crop).
+# Tune each preset on a few screenshots of the real device before running a batch, and check
+# the output visually: cropping is a safeguard, not a guarantee.
+
+default:          # generic screenshot: header bar (name/date) and footer (device UI)
+  crop: {top: 0.10, bottom: 0.08, left: 0.0, right: 0.0}
+  blackout: []
+
+none:             # already-clean exports (e.g. DICOM without burned-in annotation)
+  crop: {top: 0, bottom: 0, left: 0, right: 0}
+  blackout: []
+
+# example_vendor_model:   # placeholder: fill in after measuring the device layout
+#   crop: {top: 80, bottom: 60, left: 0, right: 200}
+#   blackout:
+#     - [0, 0, 300, 40]   # patient banner
