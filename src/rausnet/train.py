@@ -84,11 +84,13 @@ def build_model(cfg: dict) -> GradingNet:
     return GradingNet(m["backbone"], m.get("pretrained", True), dropout=m.get("dropout", 0.2))
 
 
-def build_loaders(cfg: dict):
+def build_loaders(cfg: dict, splits: dict | None = None):
+    """Loaders for the manifest's hash split, or for explicit ``splits`` (cross-validation)."""
     d, t = cfg["data"], cfg["train"]
     root = Path(d["root"])
-    records = read_manifest(root / d["manifest"])
-    splits = split_records(records, tuple(d["split_ratios"]), d["split_salt"])
+    if splits is None:
+        records = read_manifest(root / d["manifest"])
+        splits = split_records(records, tuple(d["split_ratios"]), d["split_salt"])
     for name in ("train", "val"):
         if not splits[name]:
             raise ValueError(f"split '{name}' is empty; add more patients")
@@ -141,15 +143,16 @@ def _save_atomic(obj, path: Path) -> None:
     os.replace(tmp, path)
 
 
-def train(cfg: dict, resume: str | Path | None = None) -> Path:
+def train(cfg: dict, resume: str | Path | None = None, splits: dict | None = None) -> Path:
     """Train from ``cfg``; with ``resume`` (a run directory) continue that run from ``last.pt``
-    using its saved config. Resumed runs are not bit-identical (data order RNG is not restored)."""
+    using its saved config. Resumed runs are not bit-identical (data order RNG is not restored).
+    ``splits`` ({"train", "val", "test"} -> records) replaces the hash split (used by ``rausnet.cv``)."""
     if resume is not None:
         cfg = yaml.safe_load((Path(resume) / "config.yaml").read_text())
     t = cfg["train"]
     seed_everything(t["seed"])
     device = pick_device()
-    loaders, splits = build_loaders(cfg)
+    loaders, splits = build_loaders(cfg, splits)
 
     model = build_model(cfg).to(device)
     if t.get("init_checkpoint") and resume is None:
