@@ -89,3 +89,12 @@ def test_heatmap_toggle(window, synth_small):
     assert w.pd_panel.view.pixmap().toImage() != original
     w.heatmap_box.setChecked(False)
     assert w.pd_panel.view.pixmap().toImage() == original
+
+
+def test_every_api_warning_is_translated():
+    from rausnet.serve.inference import WARNINGS
+    from rausnet.ui.app import STRINGS
+
+    for lang, table in STRINGS.items():
+        missing = [c for c in WARNINGS if f"w_{c}" not in table]
+        assert not missing, f"{lang} lacks {missing}"

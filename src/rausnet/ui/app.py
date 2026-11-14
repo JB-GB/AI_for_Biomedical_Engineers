@@ -70,6 +70,7 @@ STRINGS = {
         "images": "Imágenes (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
         "w_not_validated": "Modelo no validado clínicamente: solo investigación, no para diagnóstico.",
         "w_no_pd": "Sin imagen Power Doppler: los grados PD y combinado no son confiables.",
+        "w_refer_specialist": "Confianza baja: derivar a un especialista para la calificación.",
         "heatmap": "Mostrar mapa de calor (Grad-CAM): zonas que más influyeron en el grado",
     },
     "en": {
@@ -99,6 +100,7 @@ STRINGS = {
         "images": "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
         "w_not_validated": "Model not clinically validated: research use only, not for diagnosis.",
         "w_no_pd": "No Power Doppler image: PD and combined grades are unreliable.",
+        "w_refer_specialist": "Low confidence: refer to a specialist for grading.",
         "heatmap": "Show heat map (Grad-CAM): regions that most influenced the grade",
     },
 }
