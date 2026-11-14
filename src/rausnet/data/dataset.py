@@ -52,7 +52,7 @@ def _augment(x: torch.Tensor) -> torch.Tensor:
     x = F.interpolate(x[None], size=(size, size), mode="bilinear", align_corners=False)[0]
     gain = 0.8 + 0.4 * torch.rand(1)
     x = (x * STD + MEAN) * gain
-    x = x + 0.02 * torch.randn(x.shape)
+    x = x + 0.02 * torch.randn((1, *x.shape[1:]))  # same noise on every channel: no fake Doppler colour
     return (x.clamp(0, 1) - MEAN) / STD
 
 
