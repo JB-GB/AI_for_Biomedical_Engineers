@@ -89,6 +89,12 @@ def export_version(models_dir: str | Path = "models", version: str | None = None
             "method": calib["method"],
             "test_combined_ece": [calib["test"][k]["combined"]["ece"] for k in ("before", "after")],
         },
+        "referral": None if calib is None or "referral" not in calib else {
+            "threshold": calib["referral"]["threshold"],
+            "target_accuracy": calib["referral"]["target_accuracy"],
+            "rule": "refer to a specialist when combined-grade confidence < threshold",
+            "test_outcome": calib["referral"]["test_outcome"],
+        },
         "combined_rule": "0 if GS == 0 else max(GS, PD)",
         "joints": ["MCP2", "MCP3", "WRIST"],
         "dataset_sha256": entry.dataset_sha256,

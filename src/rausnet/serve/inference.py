@@ -22,6 +22,7 @@ ImageInput = str | Path | bytes | Image.Image | np.ndarray
 WARNINGS = {
     "not_validated": "Model not clinically validated: research use only, not for diagnosis.",
     "no_pd": "No Power Doppler image: PD and combined grades are unreliable.",
+    "refer_specialist": "Low confidence: refer to a specialist for grading.",
 }
 
 
@@ -106,6 +107,10 @@ class Predictor:
             codes.append("not_validated")
         if pd is None:
             codes.append("no_pd")
+        referral = self.info.get("referral")
+        refer = bool(referral) and float(p_comb[0].max()) < referral["threshold"]
+        if refer:
+            codes.append("refer_specialist")
         result = {
             "model_version": self.info["version"],
             "stage": self.info["stage"],
@@ -116,6 +121,8 @@ class Predictor:
             "warnings": [WARNINGS[c] for c in codes],
             "warning_codes": codes,
             "calibrated": "temperature" in self.info,
+            "refer": refer,
+            "referral_threshold": referral["threshold"] if referral else None,
         }
         if explain and len(outs) == 4:
             gs_base = np.asarray(gs_img.convert("L"))

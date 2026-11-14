@@ -69,3 +69,22 @@ def test_predictor_heatmaps_and_temperature(synth_small, onnx_model, tmp_path):
     flat = Predictor(hot).predict(synth_small / r.gs_path, synth_small / r.pd_path)
     assert max(flat["gs"]["probabilities"]) < 0.3 and flat["calibrated"]
     assert flat["gs"]["grade"] == Predictor(d).predict(synth_small / r.gs_path, synth_small / r.pd_path)["gs"]["grade"]
+
+
+def test_referral_flag(synth_small, onnx_model, tmp_path):
+    import json
+    import shutil
+
+    d, _ = onnx_model
+    r = read_manifest(synth_small / "manifest.csv")[0]
+    base = Predictor(d).predict(synth_small / r.gs_path, synth_small / r.pd_path)
+    assert base["refer"] is False and base["referral_threshold"] is None  # no threshold in sidecar
+
+    strict = tmp_path / "strict"
+    shutil.copytree(d, strict)
+    info = json.loads((strict / "model.json").read_text())
+    info["referral"] = {"threshold": 1.01, "target_accuracy": 0.95}  # nothing reaches it -> always refer
+    (strict / "model.json").write_text(json.dumps(info))
+    out = Predictor(strict).predict(synth_small / r.gs_path, synth_small / r.pd_path)
+    assert out["refer"] and "refer_specialist" in out["warning_codes"]
+    assert out["combined"]["grade"] == base["combined"]["grade"]  # referral never changes the grade
