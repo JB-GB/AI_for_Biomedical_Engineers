@@ -8,11 +8,12 @@ reference: b0_basic            # current production setting
 overrides:                     # shared by all experiments
   - data.root=${RAUSNET_DATA_DIR}
   - data.manifest=datasets/v0004/manifest.csv
-  - train.epochs=20
-  - train.patience=5
+  - train.epochs=15
+  - train.patience=4
 experiments:
   b0_basic: [model.backbone=efficientnet_b0, data.augment=basic]
+  b0_basic_nomask: [model.backbone=efficientnet_b0, data.augment=basic, train.pd_mask_gs0=false]
   b0_us: [model.backbone=efficientnet_b0, data.augment=us]
   resnet34_us: [model.backbone=resnet34, data.augment=us]
-  convnext_nano_us: [model.backbone=convnext_nano, data.augment=us]
+  convnext_nano_us: [model.backbone=convnext_nano, data.augment=us, train.lr=1.0e-4]  # 3e-4 diverged (chance loss)
   deit_small_us: [model.backbone=deit_small_patch16_224, data.augment=us]
