@@ -66,3 +66,8 @@ def test_retrain_lifecycle(tmp_path):
 
     with pytest.raises(ValueError, match="no new images"):
         retrain(cfg(0.0), ["synthA/manifest.csv"])
+
+    fourth = retrain(cfg(10.0), [], from_scratch=True)  # new recipe, same data
+    report = json.loads((tmp_path / "models/v0004/retrain_report.json").read_text())
+    assert fourth.status == "current" and report["mode"] == "from_scratch" and report["new_images"] == 0
+    assert fourth.dataset_sha256 == Registry(tmp_path / "models").get("v0002").dataset_sha256

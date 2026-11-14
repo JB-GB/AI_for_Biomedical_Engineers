@@ -1,6 +1,7 @@
 """Retraining loop with a promotion rule.
 
     python -m rausnet.retrain --config configs/retrain/default.yaml --add hospital/batch1/manifest.csv
+    python -m rausnet.retrain --config configs/retrain/default.yaml --from-scratch --set data.augment=us
 
 Steps:
 1. Merge the current model's dataset with the new source manifests into a new
@@ -88,15 +89,23 @@ def _summary(report: dict | None) -> dict:
     return {k: c[k] for k in ("qwk", "accuracy", "balanced_accuracy", "auc_ge2", "n")}
 
 
-def retrain(cfg: dict, add: list[str]) -> ModelEntry:
+def retrain(cfg: dict, add: list[str], from_scratch: bool = False) -> ModelEntry:
+    """Merge ``add`` into the current dataset, train a candidate and apply the promotion rule.
+
+    By default the candidate is fine-tuned from the current model. ``from_scratch`` trains it
+    with ``cfg['model']``/``cfg['train']`` from the start instead (a new recipe: backbone,
+    augmentation...); ``add`` may then be empty, and the comparison uses the same frozen test split.
+    """
     data_root = Path(cfg["data"]["root"])
     reg = Registry(cfg["models_dir"])
     cur = reg.current()
 
     previous = read_manifest(data_root / cur.dataset_manifest) if cur else []
-    new = merge_records(*(load_source(data_root, m) for m in add))
+    new = merge_records(*(load_source(data_root, m) for m in add)) if add else []
     combined = merge_records(previous, new)
-    if cur and len(combined) == len(previous):
+    if not combined:
+        raise ValueError("no data: pass --add (and --from-scratch only once a model exists)")
+    if cur and len(combined) == len(previous) and not from_scratch:
         raise ValueError("no new images: every --add record is already in the current dataset")
 
     version = reg.next_version()
@@ -109,9 +118,10 @@ def retrain(cfg: dict, add: list[str]) -> ModelEntry:
     t = run_cfg["train"]
     cur_ckpt = None
     if cur:
+        cur_ckpt = reg.dir / cur.model_path
+    if cur and not from_scratch:
         import torch
 
-        cur_ckpt = reg.dir / cur.model_path
         run_cfg["model"] = torch.load(cur_ckpt, map_location="cpu", weights_only=False)["config"]["model"]
         t["init_checkpoint"] = str(cur_ckpt)
         t["epochs"] = t.get("finetune_epochs", t["epochs"])
@@ -151,6 +161,8 @@ def retrain(cfg: dict, add: list[str]) -> ModelEntry:
             shutil.copy2(run_dir / name, vdir / name)
     report = {
         "version": version, "parent": cur.version if cur else None, "run_dir": str(run_dir),
+        "mode": "from_scratch" if from_scratch or not cur else "finetune",
+        "model": run_cfg["model"], "augment": run_cfg["data"].get("augment", "basic"),
         "dataset_manifest": manifest_rel, "images": len(combined), "new_images": len(combined) - len(previous),
         "promotion_rule": promo, "promoted": promote, "reason": reason,
         "paired_bootstrap": boot, "candidate": cand_report, "current": cur_report,
@@ -176,11 +188,15 @@ def retrain(cfg: dict, add: list[str]) -> ModelEntry:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Retrain with new data and apply the promotion rule.")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--add", action="append", required=True, metavar="MANIFEST",
+    parser.add_argument("--add", action="append", default=[], metavar="MANIFEST",
                         help="source manifest inside the data root (repeatable)")
+    parser.add_argument("--from-scratch", action="store_true",
+                        help="train the candidate from the config's model/recipe instead of fine-tuning")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE")
     args = parser.parse_args(argv)
-    retrain(load_config(args.config, overrides=args.set), args.add)
+    if not args.add and not args.from_scratch:
+        parser.error("pass --add MANIFEST and/or --from-scratch")
+    retrain(load_config(args.config, overrides=args.set), args.add, args.from_scratch)
 
 
 if __name__ == "__main__":
