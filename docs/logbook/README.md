@@ -26,3 +26,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-13 | [Multi-runtime: local, Colab, runner](2026-11-13_M7-T7.1_multi-runtime.md) | M7 | Result |
 | 2026-11-13 | [Augmentation bug, backbone CV, referral threshold (v0005)](2026-11-13_M4-T4.2_augment-backbones-cv-referral.md) | M4 | Result / Decision |
 | 2026-11-13 | [Deployment, de-identification, PDF report, paper draft](2026-11-13_M6-T6.5_deploy-deid-report.md) | M2/M5/M6/M8 | Result |
+| 2026-11-14 | [One-click global model improvement, CI fix, interface plan](2026-11-14_M7-T7.5_global-improvement.md) | M7/M6 | Result / Decision |

@@ -1,6 +1,6 @@
 # Where we left off — resume guide
 
-**Last update:** 2026-11-13 · **Branch:** `PIA_devl` · **Next milestone:** clinical data (M1, critical path) · first Colab/runner runs · SUS test · paper. Full list: `docs/05_pending.md`
+**Last update:** 2026-11-14 · **Branch:** `PIA_devl` · **Next milestone:** clinical data (M1, critical path) · first Colab/runner runs · SUS test · paper. Full list: `docs/05_pending.md`
 
 ## 1. Status at a glance
 
@@ -16,12 +16,12 @@
 | M7 Runtimes | 🟡 setup script, resumable training, Colab notebook, CI + self-hosted workflow, CPU≡GPU check (logbook M7) · first Colab and runner runs pending |
 | M8 Paper | 🟡 Draft v0.1 `docs/paper/manuscript.md` (synthetic results; clinical parts TBD) |
 
-Code that exists and passes tests (148 tests):
+Code that exists and passes tests (153 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `data/deid.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
-`registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `cv.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`, `ui/report.py`,
+`registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `cv.py`, `improve.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`, `ui/report.py`,
 plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`, `scripts/analyze_cam.py`, `scripts/setup_env.py`,
-`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
+`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `notebooks/colab_improve.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
 
 ## 2. Set up the machine again (needs internet once)
 
@@ -70,7 +70,9 @@ Use the app (retrain already calibrates + exports a promoted model; manual comma
 .venv/Scripts/rausnet-api --port 8000           # API only (http://127.0.0.1:8000/docs)
 ```
 
-1. [ ] **M7 first runs** Colab (free T4) and self-hosted runner; compare with `scripts/compare_runs.py`; check first CI run.
+1. [ ] **M7 first runs** `colab_improve.ipynb` (one click, shared Drive workspace, `docs/03` §2b) and self-hosted runner.
+   CI checked 2026-11-14 (one test fixed).
+1b. [ ] **Interface F1–F5** per `docs/06_interface_plan.md` (start with F1: workspace + improvement panel).
 2. [x] **M4 rest** done on synthetic data (logbook M4-T4.2). Repeat `python -m rausnet.cv --config
    configs/cv/compare.yaml` on real data; choose the referral target with clinicians.
 3. [x] **M6 leftovers** PDF report, Windows bundle, Docker (`docs/04_deployment.md`). [ ] SUS usability test.
