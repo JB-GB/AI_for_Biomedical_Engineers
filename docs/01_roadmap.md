@@ -106,6 +106,7 @@ gantt
 - T6.6–T6.10 Accessible interface for single-image checks and continuous improvement — plan in
   `docs/06_interface_plan.md` (F1 workspace + improvement panel · F2 accessible analysis flow ·
   F3 corrections · F4 local improvement + history/rollback · F5 accessibility audit + SUS).
+  - T6.6 F1 ✅ tabs Analizar / Mejorar el modelo / Ajustes, `/workspace/status`, `/model/reload`, new-model banner.
 
 ### M7 — Multi-runtime execution
 - T7.1 Local: one-command install + run (CPU & GPU). ✅ (`scripts/setup_env.py`)
