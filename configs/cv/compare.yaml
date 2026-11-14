@@ -1,0 +1,18 @@
+# Model selection by patient-level 5-fold CV on the development pool (train + val); test untouched.
+#   python -m rausnet.cv --config configs/cv/compare.yaml [--only b0_us]
+base: configs/train/baseline.yaml
+output_dir: outputs/cv
+folds: 5
+fold_salt: rausnet-cv-v1
+reference: b0_basic            # current production setting
+overrides:                     # shared by all experiments
+  - data.root=${RAUSNET_DATA_DIR}
+  - data.manifest=datasets/v0004/manifest.csv
+  - train.epochs=20
+  - train.patience=5
+experiments:
+  b0_basic: [model.backbone=efficientnet_b0, data.augment=basic]
+  b0_us: [model.backbone=efficientnet_b0, data.augment=us]
+  resnet34_us: [model.backbone=resnet34, data.augment=us]
+  convnext_nano_us: [model.backbone=convnext_nano, data.augment=us]
+  deit_small_us: [model.backbone=deit_small_patch16_224, data.augment=us]
