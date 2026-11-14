@@ -3,10 +3,13 @@
     rausnet-desktop                 # starts a private local API with the current registry model
     rausnet-desktop --server URL    # uses an existing API (e.g. a lab server)
     rausnet-desktop --lang en       # English interface (default: Spanish)
+    rausnet-desktop --workspace DIR # shared workspace: global model + corrections (remembered)
 
 Workflow: load the grey-scale image (and the Power Doppler image) -> Analyze ->
 read grades, probabilities and warnings -> optionally submit a corrected label,
-which is stored for the next retraining round.
+which is stored for the next retraining round. The "Mejorar el modelo" tab shows the
+shared workspace (images waiting, runs, history), opens the Colab improvement notebook and
+adopts a new global model without restarting.
 """
 
 from __future__ import annotations
@@ -17,9 +20,10 @@ import socket
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,11 +40,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from rausnet.ui.client import ApiClient, ApiError
+from rausnet.ui.improve_view import STRINGS as IMPROVE_STRINGS
+from rausnet.ui.improve_view import ImproveView
 from rausnet.ui.report import report_html, write_pdf
 
 STRINGS = {
@@ -130,7 +137,47 @@ STRINGS = {
     },
 }
 
+SETTINGS_STRINGS = {
+    "es": {
+        "ws_folder": "Carpeta compartida (modelo global y correcciones)",
+        "ws_none": "ninguna: se usa el modelo de este equipo",
+        "choose_folder": "Elegir carpeta…",
+        "ws_invalid": ("Esta carpeta no tiene un modelo global listo (models/registry.json con model.onnx). "
+                       "Crea el primero con «Mejorar en Colab»."),
+        "ws_remote": "La aplicación usa un servidor externo: la carpeta compartida se configura en el servidor.",
+        "ws_applied": "Carpeta compartida en uso: {path}",
+    },
+    "en": {
+        "ws_folder": "Shared folder (global model and corrections)",
+        "ws_none": "none: this computer's model is used",
+        "choose_folder": "Choose folder…",
+        "ws_invalid": ("This folder has no ready global model (models/registry.json with model.onnx). "
+                       "Create the first one with 'Improve on Colab'."),
+        "ws_remote": "The app uses an external server: the shared folder is configured on the server.",
+        "ws_applied": "Shared folder in use: {path}",
+    },
+}
+for _lang, _table in STRINGS.items():
+    _table.update(IMPROVE_STRINGS[_lang])
+    _table.update(SETTINGS_STRINGS[_lang])
+
 PREVIEW = 260
+POLL_MS = 120_000  # workspace status refresh (new model banner, images waiting)
+
+
+def settings() -> QSettings:
+    return QSettings("RAUSNet", "desktop")
+
+
+def workspace_problem(path: str | Path) -> str | None:
+    """None if ``path`` holds a servable global model, else the reason."""
+    from rausnet.serve.api import resolve_model_dir
+
+    try:
+        resolve_model_dir(Path(path) / "models")
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        return str(exc)
+    return None
 
 
 class ImagePanel(QGroupBox):
@@ -183,9 +230,13 @@ class ImagePanel(QGroupBox):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, client: ApiClient, lang: str = "es"):
+    """``connect(workspace)`` returns a client for a (new) local API on that workspace; without it
+    (external server) the workspace is configured on the server."""
+
+    def __init__(self, client: ApiClient, lang: str = "es",
+                 connect: Callable[[str], ApiClient] | None = None, workspace: str | None = None):
         super().__init__()
-        self.client, self.t = client, STRINGS[lang]
+        self.client, self.t, self.connect, self.workspace = client, STRINGS[lang], connect, workspace
         self.setWindowTitle(self.t["title"])
         info = client.model()
 
@@ -197,8 +248,25 @@ class MainWindow(QMainWindow):
             "font-weight:bold; padding:8px; border-radius:4px; color:#fff; background:"
             + ("#0b7a0b;" if validated else "#b3261e;")
         )
-        self.model_label = QLabel(self.t["model"].format(version=info["version"], stage=info["stage"]))
+        self.model_label = QLabel()
         self.model_label.setStyleSheet("color:#555;")
+        self._show_model(info)
+
+        # new global model available in the workspace
+        self.new_model_text = QLabel("")
+        self.new_model_btn = QPushButton(self.t["use_new"])
+        self.new_model_btn.setMinimumHeight(36)
+        self.new_model_btn.setAccessibleName(self.t["use_new"])
+        self.new_model_btn.clicked.connect(lambda: self.adopt_new_model())
+        self.new_model_bar = QWidget()
+        self.new_model_bar.setObjectName("newModelBar")
+        self.new_model_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.new_model_bar.setStyleSheet("#newModelBar {background:#e8f0fe; border:1px solid #1a56db;"
+                                         " border-radius:4px;}")
+        bar = QHBoxLayout(self.new_model_bar)
+        bar.addWidget(self.new_model_text, 1)
+        bar.addWidget(self.new_model_btn)
+        self.new_model_bar.hide()
 
         self.gs_panel = ImagePanel(self.t["gs_image"], self.t)
         self.pd_panel = ImagePanel(self.t["pd_image"], self.t)
@@ -280,13 +348,99 @@ class MainWindow(QMainWindow):
         body = QHBoxLayout()
         body.addLayout(left)
         body.addLayout(right)
+        analyze_tab = QWidget()
+        analyze_tab.setLayout(body)
+
+        self.improve_view = ImproveView(client, self.t)
+        self.improve_view.status_changed.connect(self._on_status)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(analyze_tab, self.t["tab_analyze"])
+        self.tabs.addTab(self.improve_view, self.t["tab_improve"])
+        self.tabs.addTab(self._settings_tab(), self.t["tab_settings"])
+        self.tabs.currentChanged.connect(lambda i: self.improve_view.refresh() if i == 1 else None)
+
         root = QVBoxLayout()
         root.addWidget(self.banner)
         root.addWidget(self.model_label)
-        root.addLayout(body)
+        root.addWidget(self.new_model_bar)
+        root.addWidget(self.tabs)
         central = QWidget()
         central.setLayout(root)
         self.setCentralWidget(central)
+
+        self.improve_view.refresh()
+        self.poll = QTimer(self)
+        self.poll.setInterval(POLL_MS)
+        self.poll.timeout.connect(self.improve_view.refresh)
+        self.poll.start()
+
+    def _settings_tab(self) -> QWidget:
+        tab = QWidget()
+        form = QFormLayout(tab)
+        self.ws_label = QLabel(self.workspace or self.t["ws_none"])
+        self.ws_label.setWordWrap(True)
+        self.ws_btn = QPushButton(self.t["choose_folder"])
+        self.ws_btn.setMinimumHeight(40)
+        self.ws_btn.setAccessibleName(self.t["choose_folder"])
+        self.ws_btn.setAccessibleDescription(self.t["ws_folder"])
+        self.ws_btn.clicked.connect(lambda: self.choose_workspace())
+        self.ws_msg = QLabel("" if self.connect else self.t["ws_remote"])
+        self.ws_msg.setWordWrap(True)
+        self.ws_btn.setEnabled(self.connect is not None)
+        form.addRow(self.t["ws_folder"], self.ws_label)
+        form.addRow(self.ws_btn)
+        form.addRow(self.ws_msg)
+        return tab
+
+    def _show_model(self, info: dict) -> None:
+        self.model_label.setText(self.t["model"].format(version=info["version"], stage=info["stage"]))
+
+    def _on_status(self, st: dict | None) -> None:
+        if st and st.get("new_model"):
+            self.new_model_text.setText(self.t["new_model"].format(version=st["current_model"]["version"]))
+            self.new_model_bar.show()
+        else:
+            self.new_model_bar.hide()
+
+    def adopt_new_model(self) -> dict | None:
+        """Switch the API to the workspace's current model; runs between analyses (UI thread)."""
+        try:
+            res = self.client.reload_model()
+        except ApiError as exc:
+            self._error(exc)
+            return None
+        self._show_model(self.client.model())
+        self.result = None  # a report must describe the model that produced it
+        self.export_btn.setEnabled(False)
+        self.status.setText(self.t["adopted"].format(version=res["version"]))
+        self.improve_view.refresh()
+        return res
+
+    def choose_workspace(self, path: str | None = None) -> bool:
+        if self.connect is None:
+            return False
+        if path is None:
+            path = QFileDialog.getExistingDirectory(self, self.t["ws_folder"], self.workspace or "")
+            if not path:
+                return False
+        problem = workspace_problem(path)
+        if problem:
+            self.ws_msg.setText(f"{self.t['ws_invalid']}\n({problem})")
+            return False
+        try:
+            client = self.connect(path)
+        except Exception as exc:  # keep the current server on any start failure
+            self._error(exc)
+            return False
+        self.client, self.workspace = client, path
+        settings().setValue("workspace", path)
+        self.ws_label.setText(path)
+        self.ws_msg.setText(self.t["ws_applied"].format(path=path))
+        self._show_model(client.model())
+        self.result = None
+        self.export_btn.setEnabled(False)
+        self.improve_view.set_client(client)
+        return True
 
     def _error(self, exc: Exception) -> None:
         QMessageBox.critical(self, self.t["error"], str(exc))
@@ -365,17 +519,22 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def start_local_server(models_dir: str = "models", data_dir: str | None = None) -> str:
+_SERVERS: dict[str, object] = {}
+
+
+def start_local_server(models_dir: str = "models", data_dir: str | None = None,
+                       workspace: str | None = None) -> str:
     """Start the API in a background thread on a free localhost port; return its URL."""
     import uvicorn
 
     from rausnet.serve.api import create_app, resolve_model_dir
 
     port = _free_port()
-    app = create_app(resolve_model_dir(models_dir), data_dir)
+    app = create_app(resolve_model_dir(models_dir), data_dir, models_dir=models_dir, workspace=workspace)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
+    _SERVERS[url] = server
     client = ApiClient(url)
     for _ in range(100):
         try:
@@ -384,6 +543,22 @@ def start_local_server(models_dir: str = "models", data_dir: str | None = None) 
         except Exception:  # server still starting
             time.sleep(0.1)
     raise RuntimeError("local API did not start")
+
+
+def stop_local_server(url: str) -> None:
+    server = _SERVERS.pop(url, None)
+    if server is not None:
+        server.should_exit = True
+
+
+def connect_workspace(workspace: str, previous_url: list[str]) -> ApiClient:
+    """Start a local API on ``workspace`` and stop the previous one (``previous_url`` is updated)."""
+    ws = Path(workspace)
+    url = start_local_server(str(ws / "models"), str(ws / "data"), workspace=str(ws))
+    if previous_url:
+        stop_local_server(previous_url[0])
+    previous_url[:] = [url]
+    return ApiClient(url)
 
 
 def main(argv=None) -> None:
@@ -395,11 +570,22 @@ def main(argv=None) -> None:
                         help="shared workspace (global model + corrections); overrides the two folders above")
     parser.add_argument("--lang", default="es", choices=sorted(STRINGS))
     args = parser.parse_args(argv)
-    if args.workspace:
-        args.models_dir, args.data_dir = str(Path(args.workspace) / "models"), str(Path(args.workspace) / "data")
-    url = args.server or start_local_server(args.models_dir, args.data_dir)
     app = QApplication(sys.argv[:1])
-    window = MainWindow(ApiClient(url), args.lang)
+    if args.server:
+        window = MainWindow(ApiClient(args.server), args.lang)
+    else:
+        workspace = args.workspace or settings().value("workspace") or None
+        if workspace and not args.workspace and workspace_problem(workspace):
+            print(f"remembered workspace {workspace} is not usable; using {args.models_dir}", file=sys.stderr)
+            workspace = None
+        current: list[str] = []
+        if workspace:
+            client = connect_workspace(workspace, current)
+        else:
+            current.append(start_local_server(args.models_dir, args.data_dir))
+            client = ApiClient(current[0])
+        window = MainWindow(client, args.lang, connect=lambda ws: connect_workspace(ws, current),
+                            workspace=workspace)
     window.show()
     sys.exit(app.exec())
 
