@@ -56,7 +56,8 @@ def test_augmentations_keep_shape_range_and_grey(name, synth):
         assert y.shape == x.shape and torch.isfinite(y).all()
         img = y * STD + MEAN
         assert img.min() >= -1e-6 and img.max() <= 1 + 1e-6
-        assert torch.allclose(y[1:], y[:1].expand(3, -1, -1), atol=1e-5)  # augmentation never invents Doppler
+        assert torch.allclose(y[1:], y[1:2].expand(3, -1, -1), atol=1e-5)  # PD stays grey: no invented Doppler
+        assert not torch.allclose(y[0], y[1], atol=1e-3)  # GS and PD backgrounds decorrelated
 
 
 def test_unknown_augmentation_rejected(synth):

@@ -35,6 +35,18 @@ def load_input(gs_path: str | Path, pd_path: str | Path | None, size: int) -> to
     return (x - MEAN) / STD
 
 
+def _modality_noise(sigma: float, hw: tuple[int, int]) -> torch.Tensor:
+    """Independent noise for the GS channel and the PD image (shared by its RGB channels).
+
+    GS and PD are separate acquisitions, so their backgrounds never match pixel for pixel.
+    Synthetic PD images are an exact copy of GS plus colour; keeping that identity lets the
+    network learn a shortcut that fails on unaugmented images (validation collapsed with a
+    shared field). One field per modality breaks the identity without inventing colour.
+    """
+    gs, pd = sigma * torch.randn((1, *hw)), sigma * torch.randn((1, *hw))
+    return torch.cat([gs, pd.expand(3, -1, -1)], 0)
+
+
 def _augment(x: torch.Tensor) -> torch.Tensor:
     """Ultrasound-plausible augmentations applied identically to all channels.
 
@@ -52,7 +64,9 @@ def _augment(x: torch.Tensor) -> torch.Tensor:
     x = F.interpolate(x[None], size=(size, size), mode="bilinear", align_corners=False)[0]
     gain = 0.8 + 0.4 * torch.rand(1)
     x = (x * STD + MEAN) * gain
-    x = x + 0.02 * torch.randn((1, *x.shape[1:]))  # same noise on every channel: no fake Doppler colour
+    # random noise level including ~0: a fixed level made the network depend on the noise itself
+    # (clean validation images collapsed to chance; logbook M4-T4.2)
+    x = x + _modality_noise(0.03 * torch.rand(1).item(), x.shape[-2:])
     return (x.clamp(0, 1) - MEAN) / STD
 
 
@@ -68,7 +82,8 @@ def _augment_us(x: torch.Tensor) -> torch.Tensor:
     - probe tilt: rotation up to +/-10 degrees, zoom 0.75-1 (depth setting);
     - time-gain compensation: gain ramp along depth (rows), +/-25 % top to bottom;
     - dynamic range / contrast: gamma 0.7-1.4;
-    - multiplicative speckle: gamma-distributed field (shape 8-30), same on all channels;
+    - multiplicative speckle: gamma-distributed (shape 8-30), one field per modality (see
+      ``_modality_noise``), shared by the PD RGB channels so no colour is invented;
     - Doppler gain: colour excess over the grey background scaled 0.75-1.25.
     """
     size = x.shape[-1]
@@ -89,9 +104,8 @@ def _augment_us(x: torch.Tensor) -> torch.Tensor:
     tgc = 1 + _uniform(-0.25, 0.25) * torch.linspace(-1, 1, size, dtype=img.dtype)[:, None]
     gs = (gs * tgc).clamp(0, 1) ** _uniform(0.7, 1.4)
     k = _uniform(8, 30)
-    speckle = torch.distributions.Gamma(k, k).sample((1, size, size)).to(img.dtype)
-    gs = gs * speckle
-    img = torch.cat([gs, gs + colour * _uniform(0.75, 1.25)], 0)
+    speckle = torch.distributions.Gamma(k, k).sample((2, size, size)).to(img.dtype)  # one field per modality
+    img = torch.cat([gs * speckle[:1], gs * speckle[1:] + colour * _uniform(0.75, 1.25)], 0)
     return (img.clamp(0, 1) - MEAN) / STD
 
 
