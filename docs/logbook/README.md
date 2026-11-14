@@ -25,3 +25,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-13 | [PD scoring rule & loss masking (v0004)](2026-11-13_M4-T4.1_pd-gs0-rule.md) | M4 | Result / Decision |
 | 2026-11-13 | [Multi-runtime: local, Colab, runner](2026-11-13_M7-T7.1_multi-runtime.md) | M7 | Result |
 | 2026-11-13 | [Augmentation bug, backbone CV, referral threshold (v0005)](2026-11-13_M4-T4.2_augment-backbones-cv-referral.md) | M4 | Result / Decision |
+| 2026-11-13 | [Deployment, de-identification, PDF report, paper draft](2026-11-13_M6-T6.5_deploy-deid-report.md) | M2/M5/M6/M8 | Result |
