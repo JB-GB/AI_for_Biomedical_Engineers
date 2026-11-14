@@ -109,6 +109,36 @@ def calibration_figure(calib: dict, path: Path) -> None:
     plt.close(fig)
 
 
+def referral_figure(calib: dict, path: Path) -> None:
+    """Risk-coverage curve: accuracy of the automatically graded cases vs fraction graded."""
+    ref = calib["referral"]
+    fig, ax = plt.subplots(figsize=(4.6, 3.6))
+    for (key, label), color in zip((("val_curve", "Validation"), ("test_curve", "Test")), SERIES, strict=False):
+        pts = ref[key]
+        xs, ys = [p["coverage"] for p in pts], [p["accuracy"] for p in pts]
+        ax.plot(xs, ys, color=color, lw=2, marker="o", ms=4)
+        ax.annotate(label, (xs[-1], ys[-1]), xytext=(4, 0), textcoords="offset points", va="center",
+                    fontsize=9, color=TEXT_2)
+    out = ref["test_outcome"]
+    ax.axhline(ref["target_accuracy"], color=TEXT_2, lw=1, ls=":")
+    ax.annotate(f"target {ref['target_accuracy']:.0%}", (0.5, ref["target_accuracy"]), xytext=(2, 3),
+                textcoords="offset points", fontsize=8, color=TEXT_2)
+    if out["accuracy_accepted"] is not None:
+        ax.plot([out["coverage"]], [out["accuracy_accepted"]], marker="D", ms=7, color=TEXT, zorder=3)
+        ax.annotate(f"threshold {ref['threshold']:.2f}: test coverage {out['coverage']:.0%}",
+                    (out["coverage"], out["accuracy_accepted"]), xytext=(-8, -14), textcoords="offset points",
+                    ha="right", fontsize=8, color=TEXT)
+    ax.set_xlim(0.48, 1.08)
+    ax.set_xlabel("Coverage (fraction graded without referral)")
+    ax.set_ylabel("Accuracy, combined grade")
+    ax.set_title("Refer-to-specialist trade-off", loc="left")
+    ax.grid(color=GRID, lw=0.8)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("run", nargs="?")
@@ -121,6 +151,8 @@ def main(argv=None) -> None:
     if args.calibration:
         calib = json.loads(Path(args.calibration).read_text())
         calibration_figure(calib, out / f"calibration_{calib['version']}.png")
+        if "val_curve" in calib.get("referral", {}):
+            referral_figure(calib, out / f"referral_{calib['version']}.png")
     if not args.run:
         return
     run = Path(args.run)
