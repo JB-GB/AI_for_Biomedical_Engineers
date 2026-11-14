@@ -10,6 +10,10 @@ Docs: [feasibility](docs/00_feasibility.md) · [roadmap](docs/01_roadmap.md) ·
 [architecture](docs/02_architecture.md) · [runtimes](docs/03_colab_and_runners.md) ·
 [**resume guide**](docs/RESUME.md) · [logbook](docs/logbook/README.md) · [paper](docs/paper/README.md) · [contributing](CONTRIBUTING.md)
 
+**Improve the global model on Colab (free GPU):**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JB-GB/AI_for_Biomedical_Engineers/blob/PIA_devl/notebooks/colab_improve.ipynb)
+→ `Runtime > Run all` → allow Drive ([how it works](docs/03_colab_and_runners.md)).
+
 ### Quick start (development)
 ```bash
 git config core.hooksPath .githooks

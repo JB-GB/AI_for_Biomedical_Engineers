@@ -55,6 +55,33 @@ edit the settings cell, then *Runtime → Run all*.
   `tests/test_notebooks.py` fails if outputs, execution counts, tokens or `share=True` appear.
 - Notebooks only orchestrate; all logic lives in `src/rausnet/`.
 
+## 2b. Continuous improvement of the global model — one click (T7.5)
+
+**Open** [`notebooks/colab_improve.ipynb` in Colab](https://colab.research.google.com/github/JB-GB/AI_for_Biomedical_Engineers/blob/PIA_devl/notebooks/colab_improve.ipynb)
+→ `Runtime > Run all` (Ctrl+F9) → allow Drive. The notebook opens with a T4 GPU selected and frees it at the end.
+
+**Shared workspace** (one Google Drive folder, e.g. `MyDrive/RAUSNet`, shared with the team):
+```
+RAUSNet/models/            global registry (current model served by every desktop app)
+RAUSNet/data/incoming/     new batches + clinician corrections (desktop app, --workspace)
+RAUSNet/data/datasets/     immutable dataset manifests, one per version
+RAUSNet/improve_log.jsonl  one line per run, no patient data
+```
+- Hospital PCs sync the folder with *Google Drive for desktop* and start the app with
+  `rausnet-desktop --workspace "G:/My Drive/RAUSNet"` (or set `RAUSNET_WORKSPACE` once): it serves the
+  global model and writes corrections into the workspace.
+- `python -m rausnet.improve run` (what the notebook calls) retrains only when ≥ `improve.min_new_images`
+  unseen images are waiting (default 20; otherwise it exits in seconds), works in a local staging copy
+  and publishes dataset → version folder → `registry.json` last. A rejected candidate is logged, the
+  served model does not change. A lock prevents two runs at once (stale after 6 h).
+- Empty workspace: synthetic seed data are generated (deterministic, never uploaded) and a first model
+  is trained. Import an existing local model instead with
+  `python -m rausnet.improve init --workspace <folder> --models models --data-root <data root>`.
+- `python -m rausnet.improve status --workspace <folder>` prints model, waiting images and history (JSON).
+- The same command runs on any machine with the folder (local GPU, self-hosted runner).
+- **Privacy:** only de-identified images (`rausnet-deid`) and only if the ethics approval allows a cloud
+  drive; otherwise keep the workspace on an institutional share and run `improve` on a local GPU/runner.
+
 ## 3. Self-hosted GitHub Actions runner (T7.3)
 
 Workflow: `.github/workflows/train-self-hosted.yml`.
