@@ -8,6 +8,8 @@ from rausnet.metrics import (
     confusion_matrix,
     consistent_pd_probabilities,
     quadratic_weighted_kappa,
+    referral_outcome,
+    referral_threshold,
     roc_auc,
 )
 
@@ -123,3 +125,21 @@ def test_calibration_metrics():
     probs[np.arange(4), [0, 1, 0, 0]] = 0.9
     assert expected_calibration_error(y, probs) == pytest.approx(0.4)
     assert sum(b["n"] for b in reliability_bins(y, probs)) == 4
+
+
+def test_referral_threshold_picks_max_coverage_meeting_target():
+    # confidences 0.9 (right), 0.8 (right), 0.7 (wrong), 0.6 (right)
+    probs = np.array([[0.9, 0.1, 0, 0], [0.8, 0.2, 0, 0], [0.7, 0.3, 0, 0], [0.6, 0.4, 0, 0]])
+    y = np.array([0, 0, 1, 0])
+    r = referral_threshold(y, probs, target_accuracy=0.95)
+    assert r["threshold"] == 0.8 and r["coverage"] == 0.5 and r["accuracy_accepted"] == 1.0
+    r = referral_threshold(y, probs, target_accuracy=0.75)
+    assert r["threshold"] == 0.6 and r["coverage"] == 1.0
+    out = referral_outcome(y, probs, 0.8)
+    assert out["n_referred"] == 2 and out["accuracy_referred"] == 0.5 and out["accuracy_accepted"] == 1.0
+
+
+def test_referral_threshold_never_splits_ties_and_can_refer_all():
+    probs = np.array([[0.7, 0.3, 0, 0], [0.7, 0.3, 0, 0]])
+    r = referral_threshold(np.array([0, 1]), probs, target_accuracy=0.9)
+    assert r["coverage"] == 0.0 and r["threshold"] > 1.0

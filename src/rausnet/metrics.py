@@ -174,3 +174,38 @@ def expected_calibration_error(y_true, probs: np.ndarray, n_bins: int = 10) -> f
 def negative_log_likelihood(y_true, probs: np.ndarray) -> float:
     y_true = np.asarray(y_true, int)
     return float(-np.log(np.clip(probs[np.arange(len(y_true)), y_true], 1e-12, 1)).mean())
+
+
+def referral_threshold(y_true, probs: np.ndarray, target_accuracy: float = 0.95) -> dict:
+    """Lowest confidence threshold whose accepted cases reach ``target_accuracy`` (T4.5).
+
+    Cases with max probability below the threshold are referred to a specialist. Among
+    thresholds meeting the target, the one with the highest coverage (fraction graded
+    automatically) is chosen. If none meets it, everything is referred (threshold 1.0+).
+    """
+    y_true = np.asarray(y_true, int)
+    conf, pred = probs.max(axis=1), probs.argmax(axis=1)
+    order = np.argsort(-conf, kind="stable")
+    correct = (pred[order] == y_true[order]).astype(float)
+    acc_at = np.cumsum(correct) / np.arange(1, len(order) + 1)  # accuracy of the top-n most confident
+    sorted_conf = conf[order]
+    # a threshold can only cut between distinct confidence values
+    cut_ok = np.append(sorted_conf[1:] < sorted_conf[:-1], True)
+    ok = np.flatnonzero((acc_at >= target_accuracy) & cut_ok)
+    if ok.size == 0:
+        return {"threshold": float(np.nextafter(1.0, 2.0)), "target_accuracy": target_accuracy,
+                "coverage": 0.0, "accuracy_accepted": None, "n": len(y_true)}
+    n_acc = int(ok[-1]) + 1
+    return {"threshold": float(sorted_conf[n_acc - 1]), "target_accuracy": target_accuracy,
+            "coverage": n_acc / len(y_true), "accuracy_accepted": float(acc_at[n_acc - 1]), "n": len(y_true)}
+
+
+def referral_outcome(y_true, probs: np.ndarray, threshold: float) -> dict:
+    """Coverage and accuracy of accepted vs referred cases at a fixed threshold."""
+    y_true = np.asarray(y_true, int)
+    conf, pred = probs.max(axis=1), probs.argmax(axis=1)
+    keep = conf >= threshold
+    acc = lambda m: float((pred[m] == y_true[m]).mean()) if m.any() else None  # noqa: E731
+    return {"threshold": threshold, "coverage": float(keep.mean()), "accuracy_accepted": acc(keep),
+            "accuracy_referred": acc(~keep), "accuracy_all": acc(np.ones_like(keep)), "n": len(y_true),
+            "n_referred": int((~keep).sum())}
