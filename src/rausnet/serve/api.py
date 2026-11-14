@@ -143,9 +143,13 @@ def main(argv=None) -> None:
     parser.add_argument("--models-dir", default="models", help="registry folder (used if --model-dir is absent)")
     parser.add_argument("--data-dir", default=os.environ.get("RAUSNET_DATA_DIR"),
                         help="data root for clinician corrections (default: $RAUSNET_DATA_DIR)")
+    parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
+                        help="shared workspace (global model + corrections); sets both folders below")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
+    if args.workspace and not args.model_dir:
+        args.models_dir, args.data_dir = str(Path(args.workspace) / "models"), str(Path(args.workspace) / "data")
     model_dir = Path(args.model_dir) if args.model_dir else resolve_model_dir(args.models_dir)
     uvicorn.run(create_app(model_dir, args.data_dir), host=args.host, port=args.port)
 

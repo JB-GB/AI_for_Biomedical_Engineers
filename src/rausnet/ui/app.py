@@ -391,8 +391,12 @@ def main(argv=None) -> None:
     parser.add_argument("--server", default=None, help="API URL; default: start a local one")
     parser.add_argument("--models-dir", default="models")
     parser.add_argument("--data-dir", default=os.environ.get("RAUSNET_DATA_DIR"))
+    parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
+                        help="shared workspace (global model + corrections); overrides the two folders above")
     parser.add_argument("--lang", default="es", choices=sorted(STRINGS))
     args = parser.parse_args(argv)
+    if args.workspace:
+        args.models_dir, args.data_dir = str(Path(args.workspace) / "models"), str(Path(args.workspace) / "data")
     url = args.server or start_local_server(args.models_dir, args.data_dir)
     app = QApplication(sys.argv[:1])
     window = MainWindow(ApiClient(url), args.lang)
