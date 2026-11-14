@@ -1,0 +1,26 @@
+# RAUSNet inference API on a research server.
+#
+#   docker compose up -d --build
+#   RAUSNET_MODELS_DIR=/srv/rausnet/models docker compose up -d
+#
+# The port is bound to 127.0.0.1 only: reach it through an SSH tunnel or a
+# reverse proxy with TLS and authentication, never expose it directly.
+services:
+  api:
+    build: .
+    image: rausnet-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RAUSNET_PORT:-8000}:8000"
+    volumes:
+      - type: bind
+        source: ${RAUSNET_MODELS_DIR:-./models}
+        target: /models
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
