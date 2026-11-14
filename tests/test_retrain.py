@@ -62,10 +62,11 @@ def test_retrain_lifecycle(tmp_path):
     assert not (models / "v0001/calibration.json").exists()  # postprocess skipped
     pp = json.loads((models / "v0002/retrain_report.json").read_text())["postprocess"]
     assert (models / "v0002/calibration.json").exists() and pp["calibration"].endswith("calibration.json")
-    if has_onnx:
+    # torch may export without onnxscript (seen on Linux CI): judge by the recorded outcome
+    if "onnx" in pp:
         assert (models / "v0002/model.onnx").exists() and (models / "v0002/model.json").exists()
     else:
-        assert "export_error" in pp
+        assert not has_onnx and "export_error" in pp
 
     third = retrain(cfg(-10.0), ["synthC/manifest.csv"])  # impossible bar -> rejected
     assert third.status == "rejected"
