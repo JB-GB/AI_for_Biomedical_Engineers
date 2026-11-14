@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       export:
-        description: "retrain only: calibrate + export ONNX when the candidate is promoted"
+        description: "retrain only: calibrate + export ONNX when promoted (done by rausnet.retrain)"
         type: boolean
         default: true
 
@@ -77,17 +77,15 @@ jobs:
           [ ${#args[@]} -gt 0 ] || { echo "::error::retrain needs manifests in 'add' or from_scratch"; exit 1; }
           current() { "$PY" -c "import os; from rausnet.registry import Registry; c = Registry(os.environ['MODELS_DIR']).current(); print(c.version if c else '')"; }
           before=$(current)
-          "$PY" -m rausnet.retrain --config "$CONFIG" "${args[@]}" \
+          post=(); [ "$EXPORT" = "true" ] || post=(--no-postprocess)
+          # retrain calibrates + exports a promoted model itself (unless --no-postprocess)
+          "$PY" -m rausnet.retrain --config "$CONFIG" "${args[@]}" "${post[@]}" \
             --set models_dir="$MODELS_DIR" output_dir=outputs $OVERRIDES
           after=$(current)
           cp "$MODELS_DIR/$(ls -1 "$MODELS_DIR" | grep -E '^v[0-9]{4}$' | tail -1)/retrain_report.json" outputs/ || true
-          if [ "$after" != "$before" ]; then echo "PROMOTED=$after" >> "$GITHUB_ENV"; fi
-      - name: Calibrate + export the promoted model
-        if: inputs.task == 'retrain' && inputs.export && env.PROMOTED != ''
-        run: |
-          "$PY" -m rausnet.calibrate --models-dir "$MODELS_DIR" --version "$PROMOTED"
-          "$PY" -m rausnet.export --models-dir "$MODELS_DIR" --version "$PROMOTED"
-          cp "$MODELS_DIR/$PROMOTED/"{calibration.json,model.json} outputs/
+          if [ "$after" != "$before" ]; then
+            for f in calibration.json model.json; do cp "$MODELS_DIR/$after/$f" outputs/ 2>/dev/null || true; done
+          fi
       - name: Upload metrics (no data, no weights)
         if: always()
         uses: actions/upload-artifact@v4
