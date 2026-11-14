@@ -40,6 +40,14 @@ WORKSPACE_FILE = "workspace.json"
 LOG_FILE = "improve_log.jsonl"
 LOCK_FILE = ".improve.lock"
 DEFAULT_SPEC = {"synthetic": {"dir": "synth", "patients": 200, "seed": 0}}
+DEFAULT_MIN_NEW = 20  # same as improve.min_new_images in configs/retrain/default.yaml
+REPOSITORY = "JB-GB/AI_for_Biomedical_Engineers"
+NOTEBOOK = "notebooks/colab_improve.ipynb"
+
+
+def colab_url(repository: str = REPOSITORY, branch: str = "PIA_devl") -> str:
+    """Link that opens the one-click improvement notebook in Google Colab."""
+    return f"https://colab.research.google.com/github/{repository}/blob/{branch}/{NOTEBOOK}"
 
 
 class WorkspaceLocked(RuntimeError):
@@ -174,16 +182,19 @@ def pending_batches(data_root: Path, current_manifest: str | None) -> dict:
     return out
 
 
-def status(workspace: str | Path) -> dict:
+def status(workspace: str | Path, min_new_images: int = DEFAULT_MIN_NEW) -> dict:
     ws = Workspace(workspace)
     cur = _current(ws.models) if (ws.models / "registry.json").exists() else None
     pend = pending_batches(ws.data, cur.dataset_manifest if cur else None) if ws.data.is_dir() else \
         {"ready": [], "incomplete": []}
+    n_pending = sum(n for _, n in pend["ready"])
     return {
         "workspace": str(ws.root),
         "current_model": None if cur is None else {"version": cur.version, "created": cur.created,
                                                    "test_metrics": cur.test_metrics, "decision": cur.decision},
-        "pending_images": sum(n for _, n in pend["ready"]),
+        "pending_images": n_pending,
+        "min_new_images": min_new_images,
+        "ready": cur is None or n_pending >= min_new_images,
         "pending_batches": pend["ready"],
         "incomplete_batches": pend["incomplete"],
         "running": Lock(ws).info(),
@@ -210,9 +221,9 @@ def improve(workspace: str | Path, cfg: dict, min_new_images: int | None = None,
     """One improvement cycle; returns (and logs) a summary. Never leaves a partial model behind."""
     ws = Workspace(workspace).ensure()
     opts = cfg.get("improve") or {}
-    min_new = opts.get("min_new_images", 20) if min_new_images is None else min_new_images
+    min_new = opts.get("min_new_images", DEFAULT_MIN_NEW) if min_new_images is None else min_new_images
     started = time.time()
-    summary = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "runtime": runtime_name()}
+    summary = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "runtime": runtime_name(), "min_new": min_new}
     with Lock(ws, opts.get("lock_stale_hours", 6.0)):
         stage = Path(staging) if staging else Path(tempfile.mkdtemp(prefix="rausnet_stage_"))
         try:

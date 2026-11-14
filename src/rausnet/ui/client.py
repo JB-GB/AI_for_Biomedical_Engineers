@@ -47,3 +47,9 @@ class ApiClient:
         data = {"patient_id": patient_id, "joint": joint, "side": side,
                 "gs_grade": str(gs_grade), "pd_grade": str(pd_grade)}
         return self._check(self.http.post("/corrections", files=self._files(gs, pd), data=data))
+
+    def workspace_status(self) -> dict:
+        return self._check(self.http.get("/workspace/status"))
+
+    def reload_model(self) -> dict:
+        return self._check(self.http.post("/model/reload"))

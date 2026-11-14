@@ -12,6 +12,9 @@ Endpoints:
                        ?explain=true adds Grad-CAM overlays as base64 PNG data URLs
     POST /corrections  multipart: gs, pd, patient_id, joint, side, gs_grade, pd_grade
                        -> stored in <data_dir>/incoming/corrections/<date>/ for the next retrain
+    GET  /workspace/status  shared workspace: global model, images waiting, run in progress, history
+                       (``--workspace`` only) plus the version this API serves
+    POST /model/reload switch to the registry's current model if it changed (between requests)
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from rausnet import improve
 from rausnet.data.manifest import FIELDNAMES, Record
 from rausnet.registry import Registry
 from rausnet.serve.inference import Predictor
@@ -69,26 +73,56 @@ def _png_data_url(rgb) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def create_app(model_dir: str | Path, data_dir: str | Path | None = None) -> FastAPI:
-    predictor = Predictor(model_dir)
-    lock = threading.Lock()
-    app = FastAPI(title="RAUSNet", version=predictor.info.get("rausnet_version", "0"),
+def create_app(model_dir: str | Path, data_dir: str | Path | None = None, models_dir: str | Path | None = None,
+               workspace: str | Path | None = None, min_new_images: int = improve.DEFAULT_MIN_NEW) -> FastAPI:
+    """``models_dir`` (registry) enables ``/model/reload``; ``workspace`` enables ``/workspace/status``."""
+    state = {"predictor": Predictor(model_dir), "dir": Path(model_dir).resolve()}
+    lock, swap = threading.Lock(), threading.Lock()
+    app = FastAPI(title="RAUSNet", version=state["predictor"].info.get("rausnet_version", "0"),
                   description="EULAR-OMERACT synovitis grading. Research use only, not for diagnosis.")
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "model_version": predictor.info["version"]}
+        return {"status": "ok", "model_version": state["predictor"].info["version"]}
 
     @app.get("/model")
     def model_info():
-        return predictor.info
+        return state["predictor"].info
+
+    @app.post("/model/reload")
+    def reload_model():
+        if models_dir is None:
+            raise HTTPException(503, "reload is disabled: the API serves a fixed --model-dir")
+        with swap:
+            try:
+                folder = resolve_model_dir(models_dir).resolve()
+            except FileNotFoundError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            changed = folder != state["dir"]
+            if changed:
+                try:
+                    predictor = Predictor(folder)  # load fully before switching: never a half model
+                except Exception as exc:  # keep serving the previous model
+                    raise HTTPException(409, f"new model could not be loaded: {exc}") from exc
+                state.update(predictor=predictor, dir=folder)
+        return {"changed": changed, "version": state["predictor"].info["version"]}
+
+    @app.get("/workspace/status")
+    def workspace_status():
+        if workspace is None:
+            raise HTTPException(503, "no shared workspace: start the API with --workspace")
+        out = improve.status(workspace, min_new_images)
+        out["served_version"] = state["predictor"].info["version"]
+        cur = out["current_model"]
+        out["new_model"] = bool(cur and cur["version"] != out["served_version"])
+        return out
 
     @app.post("/predict")
     async def predict(gs: UploadFile = File(...), pd: UploadFile | None = File(None), explain: bool = False):
         gs_img = await _read_image(gs, "gs")
         pd_img = await _read_image(pd, "pd") if pd is not None else None
         try:
-            result = predictor.predict(gs_img, pd_img, explain=explain)
+            result = state["predictor"].predict(gs_img, pd_img, explain=explain)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if "heatmaps" in result:
@@ -145,13 +179,17 @@ def main(argv=None) -> None:
                         help="data root for clinician corrections (default: $RAUSNET_DATA_DIR)")
     parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
                         help="shared workspace (global model + corrections); sets both folders below")
+    parser.add_argument("--min-new", type=int, default=improve.DEFAULT_MIN_NEW,
+                        help="images needed before an improvement run (shown in /workspace/status)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
     if args.workspace and not args.model_dir:
         args.models_dir, args.data_dir = str(Path(args.workspace) / "models"), str(Path(args.workspace) / "data")
     model_dir = Path(args.model_dir) if args.model_dir else resolve_model_dir(args.models_dir)
-    uvicorn.run(create_app(model_dir, args.data_dir), host=args.host, port=args.port)
+    app = create_app(model_dir, args.data_dir, models_dir=None if args.model_dir else args.models_dir,
+                     workspace=None if args.model_dir else args.workspace, min_new_images=args.min_new)
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
