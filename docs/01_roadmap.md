@@ -110,6 +110,7 @@ gantt
   - T6.7 F2 ✅ drag & drop GS/PD pairing, shortcuts, spoken result, text size, high contrast, cividis heat map (NVDA walkthrough pending).
   - T6.8 F3 ✅ one-click grade selectors (3 clicks), undo, today's cases (no identifiers), input checks.
   - T6.9 F4 ✅ 'Mejorar en este equipo' (GPU, progress, cancel), version table, lead-only roll back (`/model/rollback`, logged).
+  - T6.11 ✅ release v0.2.0: Windows bundle with workspace seed, release workflow on tags, one-command installers.
   - T6.10 F5 🟡 automated audit + fixes (window fits 1366×768, text size reaches every control), study log, protocol `docs/07_usability_protocol.md`; sessions with users pending.
 
 ### M7 — Multi-runtime execution

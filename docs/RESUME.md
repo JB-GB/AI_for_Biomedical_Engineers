@@ -16,14 +16,16 @@
 | M7 Runtimes | 🟡 setup script, resumable training, Colab notebook, CI + self-hosted workflow, CPU≡GPU check (logbook M7) · first Colab and runner runs pending |
 | M8 Paper | 🟡 Draft v0.1 `docs/paper/manuscript.md` (synthetic results; clinical parts TBD) |
 
-Code that exists and passes tests (195 tests):
+Code that exists and passes tests (203 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `data/deid.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
 `registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `cv.py`, `improve.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`, `ui/improve_view.py`, `ui/accessibility.py`, `ui/corrections.py`, `ui/local_improve.py`, `ui/audit.py`, `ui/study.py`, `ui/report.py`,
 plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`, `scripts/analyze_cam.py`, `scripts/setup_env.py`,
-`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/a11y_audit.py`, `scripts/usability_report.py`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `notebooks/colab_improve.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
+`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/a11y_audit.py`, `scripts/usability_report.py`, `scripts/install.ps1`, `scripts/install.sh`, `release/workspace` (seed), `.github/workflows/release.yml`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `notebooks/colab_improve.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
 
 ## 2. Set up the machine again (needs internet once)
+
+One command (clones, venv, PyTorch GPU/CPU, all extras, model check): see README, *Install everything with one command*. Release v0.2.0 (Windows bundle): logbook M6-T6.11.
 
 ```bash
 py -3.11 scripts/setup_env.py          # venv + CUDA torch + all extras + commit hook (--cpu without GPU)

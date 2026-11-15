@@ -32,3 +32,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-14 | [Interface F3: correction workflow](2026-11-14_M6-T6.8_interface-f3.md) | M6 | Result |
 | 2026-11-14 | [Interface F4: local improvement, history, roll back](2026-11-14_M6-T6.9_interface-f4.md) | M6 | Result / Decision |
 | 2026-11-14 | [Interface F5: accessibility audit, fixes, study kit](2026-11-14_M6-T6.10_interface-f5.md) | M6 | Result / Decision |
+| 2026-11-14 | [Release v0.2.0 and one-command installers](2026-11-14_M6-T6.11_release-v0.2.0.md) | M6 | Result / Decision |

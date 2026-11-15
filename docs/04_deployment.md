@@ -69,54 +69,77 @@ Details:
   `-v /srv/rausnet/data:/data` and the command
   `--models-dir /models --data-dir /data --host 0.0.0.0`. The folder must be writable by uid 10001.
 
-## 2. Windows desktop bundle (PyInstaller)
+## 2. Windows desktop bundle (PyInstaller) and releases
 
-Build (from the repository root, in the project venv with the `serve` and `ui` extras):
+**Releases** are built by `.github/workflows/release.yml` when a tag `vX.Y.Z` is pushed:
+1. it checks that the tag equals `rausnet.__version__` and that `docs/releases/<tag>.md` exists;
+2. it builds on `windows-latest`, runs the self-test, and publishes
+   `RAUSNet-<version>-windows-x64.zip` plus its `.sha256` as a GitHub pre-release.
+
+```bash
+git tag -a v0.2.0 -m "RAUSNet 0.2.0" && git push origin v0.2.0
+```
+
+**Local build** (from the repository root, in the project venv with the `serve` and `ui` extras):
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -e ".[serve,ui]" pyinstaller
-.venv\Scripts\python.exe scripts\build_installer.py            # windowed build
+.venv\Scripts\python.exe scripts\build_installer.py --zip      # windowed build + release zip
 .venv\Scripts\python.exe scripts\build_installer.py --console  # with console, for debugging
 ```
 
 The script runs `PyInstaller packaging/rausnet_desktop.spec` into `build/` (cache) and
-`dist/RAUSNet/` (output), then runs `RAUSNet.exe --self-test`, which imports the GUI, ONNX
-Runtime and API stacks, loads the current model from `./models` if present, starts the local API,
-and exits with code 0 on success. `build/` and `dist/` are git-ignored; never commit binaries.
+`dist/RAUSNet/` (output). It then copies the **workspace seed** (`release/workspace` →
+`workspace_seed/`) and the Spanish guide `release/LEEME.txt` next to the exe, and runs
+`RAUSNet.exe --self-test`. The self-test:
+- imports the GUI, ONNX Runtime and API stacks;
+- makes a temporary workspace from the seed, starts the local API, and reads the status and versions;
+- exits 0 on success.
 
-The bundle is a one-folder build: `dist/RAUSNet/RAUSNet.exe` plus `dist/RAUSNet/_internal/`.
-Zip the whole `RAUSNet` folder to distribute it (an optional Inno Setup/MSI wrapper can be added
-around that folder later). The training stack (torch, timm, mlflow, onnx) is excluded.
+`build/` and `dist/` are git-ignored. The training stack (torch, timm, mlflow, onnx) is excluded, so
+improvement runs on Colab (or in a source installation with a GPU).
 
-### Where the models folder goes
+### The workspace seed
 
-The model registry is **not** bundled. When neither `--models-dir` nor `--server` is given the
-app looks for `registry.json` in:
+`release/workspace` is a complete starting workspace, small enough for git (about 32 MB):
+- `models/registry.json` with the current version only (v0005), and `v0005/` with `model.onnx`,
+  `model.json`, `calibration.json` and `model.pt` (the checkpoint is needed to fine-tune the next
+  version);
+- `data/datasets/v0005/manifest.csv`, whose SHA-256 matches the registry;
+- `workspace.json`: the deterministic synthetic sets the manifest uses (seed images + two batches).
+  Images are regenerated on demand during an improvement, never stored.
 
-1. `models\` in the current working directory, then
-2. `models\` next to `RAUSNet.exe`.
+The seed is used in two ways:
+1. **First start:** with no shared folder chosen and no `--models-dir`, the app creates the local
+   workspace `%LOCALAPPDATA%\RAUSNet\desktop\workspace` from the seed. Analysing, corrections, the
+   improvement panel and the version table work offline.
+2. **New shared folder:** in *Ajustes*, choosing an empty folder (e.g. on Google Drive) offers to set
+   it up from the seed. Every computer then chooses the same folder.
 
-So the normal layout for a workstation is:
+A real improvement on a seeded workspace was checked: regenerated data, 24 corrections, fine-tune,
+promotion, calibration and ONNX export.
+
+Layout of the release folder:
 
 ```
 RAUSNet\
   RAUSNet.exe
+  LEEME.txt
   _internal\
-  models\
-    registry.json
-    v0005\model.onnx
-    v0005\model.json
+  workspace_seed\  (models\, data\datasets\, workspace.json)
 ```
 
 Other options:
 
 ```powershell
-RAUSNet.exe --models-dir D:\rausnet\models      # registry elsewhere
+RAUSNet.exe --workspace G:\MyDrive\RAUSNet    # shared folder (also remembered from Ajustes)
+RAUSNet.exe --models-dir D:\rausnet\models      # serve a registry instead of a workspace
 RAUSNet.exe --server http://127.0.0.1:8000      # use a running API (e.g. via SSH tunnel to the server)
 RAUSNet.exe --lang en                           # English interface
 ```
 
-If no registry is found the app shows an error dialog naming the expected location.
+An old-style `models\` folder in the working directory or next to the exe is still served as
+before. If neither a seed nor a registry is found, the app shows an error dialog.
 
 ## 3. Security notes
 
