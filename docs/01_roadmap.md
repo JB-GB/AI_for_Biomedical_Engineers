@@ -109,6 +109,7 @@ gantt
   - T6.6 F1 ✅ tabs Analizar / Mejorar el modelo / Ajustes, `/workspace/status`, `/model/reload`, new-model banner.
   - T6.7 F2 ✅ drag & drop GS/PD pairing, shortcuts, spoken result, text size, high contrast, cividis heat map (NVDA walkthrough pending).
   - T6.8 F3 ✅ one-click grade selectors (3 clicks), undo, today's cases (no identifiers), input checks.
+  - T6.9 F4 ✅ 'Mejorar en este equipo' (GPU, progress, cancel), version table, lead-only roll back (`/model/rollback`, logged).
 
 ### M7 — Multi-runtime execution
 - T7.1 Local: one-command install + run (CPU & GPU). ✅ (`scripts/setup_env.py`)
