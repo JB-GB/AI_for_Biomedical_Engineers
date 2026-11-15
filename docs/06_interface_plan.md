@@ -1,6 +1,6 @@
 # Plan — accessible interface for single-image checks and continuous model improvement
 
-**Status:** F1–F4 done (2026-11-14), F5 planned · **Milestone:** M6 (new tasks T6.6–T6.10) · **Builds on:** desktop app
+**Status:** F1–F4 done, F5 automated part done (2026-11-14); sessions pending · **Milestone:** M6 (new tasks T6.6–T6.10) · **Builds on:** desktop app
 (`ui/app.py`, PDF report), API (`serve/api.py`), shared workspace + `rausnet.improve` (M7-T7.5).
 
 ## 1. Goal and users
@@ -85,7 +85,7 @@ prevents accidental changes; real access control is the permission on the shared
 | **F2** Accessible single-image flow (T6.7) ✅ (NVDA walkthrough pending) | drag & drop pairing, shortcuts, accessible names, spoken result, text size, palettes | keyboard-only and NVDA walkthrough of "check one case" passes; automated accessible-name test green |
 | **F3** Correction workflow (T6.8) ✅ | pre-filled dialog, undo, "Casos de hoy", input checks (size, modality) | correction in ≤ 3 clicks; undo works; nothing identifying stored |
 | **F4** Local improvement + history (T6.9) ✅ | QThread runner with progress/cancel, version history, roll back | improvement runs on a GPU PC from the app; roll back restores the previous model and logs it |
-| **F5** Evaluation (T6.10 = T6.4) | Accessibility Insights audit, SUS with ≥ 3 non-technical users, fixes | SUS ≥ 68; click budgets met; findings logged for the paper |
+| **F5** Evaluation (T6.10 = T6.4) 🟡 audit + kit done, sessions pending (`07_usability_protocol.md`) | Accessibility Insights audit, SUS with ≥ 3 non-technical users, fixes | SUS ≥ 68; click budgets met; findings logged for the paper |
 
 Order: F1 → F2 → F3 → F4 → F5 (F2 and F3 can run in parallel; they touch different views).
 

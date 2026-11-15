@@ -124,7 +124,9 @@ Figures: `synthetic_examples.png`, `cv_comparison.png`, `v0005_confusion.png`, `
   and ROC; referral coverage at the agreed target; retraining curve (performance vs added data).
 
 ### 3.3 Usability `[TBD]`
-- SUS score (≥ 3 non-technical users), task completion time, qualitative feedback.
+- SUS score (≥ 3 non-technical users), task completion time, qualitative feedback (protocol `docs/07_usability_protocol.md`).
+- Automated accessibility audit (names, keyboard reach, target size, contrast, 200 % text, 1366×768 fit): 0 errors after
+  fixing 4 findings (`docs/paper/a11y_audit.md`, logbook M6-T6.10); manual NVDA / Accessibility Insights walkthrough `[TBD]`.
 
 ### 3.4 Runtimes `[TBD]`
 - Colab and self-hosted runner runs vs local, paired bootstrap.

@@ -28,7 +28,7 @@ As soon as real images arrive (each step already has code):
 | T7.2 Colab | Run `notebooks/colab_train.ipynb` once on a free T4, compare with `scripts/compare_runs.py` | Built, never run |
 | T7.3 Self-hosted runner | Register the laptop (labels `self-hosted, gpu, rausnet`), set `RAUSNET_PYTHON`, `RAUSNET_DATA_DIR`, `RAUSNET_MODELS_DIR`, dispatch `train` | Built, never run |
 | T7.4 Equivalence | Log Colab/runner vs local paired bootstrap | Local CPU ≡ GPU done |
-| T6.4 Usability test | ≥ 3 non-technical users, SUS questionnaire, task times | Not started |
+| T6.4 Usability test | ≥ 3 non-technical users, SUS questionnaire, task times; NVDA + Accessibility Insights walkthrough (`docs/07_usability_protocol.md`) | Kit ready (study log, SUS form, scoring); sessions not run |
 | T0.2 Hook on every clone | Each contributor runs `git config core.hooksPath .githooks` | Per clone |
 | T0.6 Work packages | Assign tasks to the 3 contributors | Team decision |
 

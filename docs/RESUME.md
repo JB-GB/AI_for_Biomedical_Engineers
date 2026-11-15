@@ -16,12 +16,12 @@
 | M7 Runtimes | 🟡 setup script, resumable training, Colab notebook, CI + self-hosted workflow, CPU≡GPU check (logbook M7) · first Colab and runner runs pending |
 | M8 Paper | 🟡 Draft v0.1 `docs/paper/manuscript.md` (synthetic results; clinical parts TBD) |
 
-Code that exists and passes tests (186 tests):
+Code that exists and passes tests (195 tests):
 `grading.py`, `metrics.py`, `data/manifest.py`, `data/split.py`, `data/synthetic.py`,
 `data/dataset.py`, `data/merge.py`, `data/deid.py`, `models/net.py`, `train.py`, `evaluate.py`, `retrain.py`,
-`registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `cv.py`, `improve.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`, `ui/improve_view.py`, `ui/accessibility.py`, `ui/corrections.py`, `ui/local_improve.py`, `ui/report.py`,
+`registry.py`, `explain.py`, `heatmap.py`, `calibrate.py`, `cv.py`, `improve.py`, `export.py`, `serve/inference.py`, `serve/api.py`, `ui/client.py`, `ui/app.py`, `ui/improve_view.py`, `ui/accessibility.py`, `ui/corrections.py`, `ui/local_improve.py`, `ui/audit.py`, `ui/study.py`, `ui/report.py`,
 plus `scripts/make_figures.py`, `scripts/gui_screenshot.py`, `scripts/analyze_cam.py`, `scripts/setup_env.py`,
-`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `notebooks/colab_improve.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
+`scripts/compare_runs.py`, `scripts/eda.py`, `scripts/a11y_audit.py`, `scripts/usability_report.py`, `scripts/build_installer.py`, `Dockerfile`, `notebooks/colab_train.ipynb`, `notebooks/colab_improve.ipynb`, `.github/workflows/{ci,train-self-hosted}.yml`.
 
 ## 2. Set up the machine again (needs internet once)
 
@@ -72,7 +72,7 @@ Use the app (retrain already calibrates + exports a promoted model; manual comma
 
 1. [ ] **M7 first runs** `colab_improve.ipynb` (one click, shared Drive workspace, `docs/03` §2b) and self-hosted runner.
    CI checked 2026-11-14 (one test fixed).
-1b. [ ] **Interface F4–F5** per `docs/06_interface_plan.md` (F1–F4 done: logbook M6-T6.6/7/8/9; next F5 audit + SUS; NVDA walkthrough of F2–F4 by a person).
+1b. [ ] **Interface F4–F5** per `docs/06_interface_plan.md` (F1–F4 done, F5 audit + kit done: logbook M6-T6.6–6.10; next: NVDA walkthrough and SUS sessions per `docs/07_usability_protocol.md`).
 2. [x] **M4 rest** done on synthetic data (logbook M4-T4.2). Repeat `python -m rausnet.cv --config
    configs/cv/compare.yaml` on real data; choose the referral target with clinicians.
 3. [x] **M6 leftovers** PDF report, Windows bundle, Docker (`docs/04_deployment.md`). [ ] SUS usability test.
