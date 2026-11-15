@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -53,7 +54,10 @@ class Registry:
         raise KeyError(version)
 
     def next_version(self) -> str:
-        return f"v{len(self.entries) + 1:04d}"
+        """One more than the highest ``vNNNN`` (not the entry count: a registry seeded with only its
+        current version, e.g. the desktop release's v0005, must continue with v0006)."""
+        numbers = [int(e.version[1:]) for e in self.entries if re.fullmatch(r"v\d+", e.version)]
+        return f"v{max(numbers, default=0) + 1:04d}"
 
     def add(self, entry: ModelEntry, promote: bool) -> None:
         if any(e.version == entry.version for e in self.entries):

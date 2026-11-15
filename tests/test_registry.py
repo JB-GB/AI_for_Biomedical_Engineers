@@ -35,3 +35,9 @@ def test_corrupt_registry_with_two_current(tmp_path):
     (tmp_path / "registry.json").write_text(json.dumps(data))
     with pytest.raises(ValueError, match="more than one current"):
         Registry(tmp_path)
+
+
+def test_next_version_continues_after_the_highest(tmp_path):
+    reg = Registry(tmp_path)
+    reg.add(ModelEntry("v0005", "2026-11-13", "v0005/model.pt", "d.csv", "x", "S2", None), promote=True)
+    assert reg.next_version() == "v0006"  # a seeded registry with one entry must not go back to v0002
