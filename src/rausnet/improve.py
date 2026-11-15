@@ -258,17 +258,50 @@ def _progress_printer(stage: str, **info) -> None:
 
 
 def _ensure_synthetic(spec: dict, data_root: Path) -> str | None:
-    """Regenerate the deterministic synthetic seed set in ``data_root`` if missing."""
-    s = spec.get("synthetic")
-    if not s:
-        return None
-    out = data_root / s["dir"]
-    if not (out / "manifest.csv").exists():
-        from rausnet.data.synthetic import main as synth
+    """Regenerate the deterministic synthetic sets of the spec in ``data_root`` if missing.
 
-        synth(["--out", str(out), "--patients", str(s["patients"]), "--seed", str(s["seed"]),
-               "--size", str(s.get("size", 256))])
-    return f"{s['dir']}/manifest.csv"
+    ``synthetic`` is one set or a list of sets (``dir``, ``patients``, ``seed``, ``size``); the
+    generator is deterministic, so a dataset manifest that uses them can be shipped without images.
+    Returns the manifest of the first set (the bootstrap seed of an empty workspace).
+    """
+    sets = spec.get("synthetic")
+    if not sets:
+        return None
+    sets = [sets] if isinstance(sets, dict) else list(sets)
+    for s in sets:
+        out = data_root / s["dir"]
+        if not (out / "manifest.csv").exists():
+            from rausnet.data.synthetic import main as synth
+
+            synth(["--out", str(out), "--patients", str(s["patients"]), "--seed", str(s["seed"]),
+                   "--size", str(s.get("size", 256))])
+    return f"{sets[0]['dir']}/manifest.csv"
+
+
+def seed_workspace(target: str | Path, seed: str | Path) -> bool:
+    """Make ``target`` a workspace from a seed folder (models, dataset manifests, ``workspace.json``)
+    unless it already has a global model. Returns True when it was seeded.
+
+    The desktop release ships such a seed, so the app works on first start (local workspace) and an
+    empty shared folder (e.g. on Google Drive) can be set up with the bundled model in one step.
+    """
+    ws = Workspace(target)
+    if (ws.models / "registry.json").exists():
+        return False
+    seed = Path(seed)
+    if not (seed / "models" / "registry.json").exists():
+        raise FileNotFoundError(f"{seed} is not a workspace seed (no models/registry.json)")
+    ws.root.mkdir(parents=True, exist_ok=True)
+    for item in ("workspace.json", "data", "models"):  # registry last: readers see a complete model
+        src = seed / item
+        if src.is_dir():
+            shutil.copytree(src, ws.root / item, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("registry.json") if item == "models" else None)
+        elif src.is_file():
+            shutil.copy2(src, ws.root / item)
+    shutil.copy2(seed / "models" / "registry.json", ws.models / "registry.json")
+    ws.ensure()
+    return True
 
 
 def improve(workspace: str | Path, cfg: dict, min_new_images: int | None = None,

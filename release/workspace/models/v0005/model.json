@@ -1,0 +1,76 @@
+{
+  "format_version": 1,
+  "rausnet_version": "0.1.0",
+  "version": "v0005",
+  "status_at_export": "current",
+  "exported": "2026-11-13T20:35:17",
+  "stage": "S2",
+  "clinically_validated": false,
+  "intended_use": "Research use only. Not a medical device. Not for diagnosis.",
+  "backbone": "efficientnet_b0",
+  "input": {
+    "name": "input",
+    "channels": [
+      "gs",
+      "pd_r",
+      "pd_g",
+      "pd_b"
+    ],
+    "size": 224,
+    "mean": 0.5,
+    "std": 0.25,
+    "resize": "bilinear, align_corners=false, no antialias",
+    "missing_pd": "replicate GS into PD channels"
+  },
+  "outputs": {
+    "gs_logits": "N x 4 (EULAR-OMERACT GS 0-3)",
+    "pd_logits": "N x 4 (PD 0-3)",
+    "gs_cam": "N x 4 x h x w",
+    "pd_cam": "N x 4 x h x w"
+  },
+  "cam": {
+    "method": "exact Grad-CAM (global average pooling + linear head)",
+    "relu": true
+  },
+  "temperature": {
+    "gs": 1.0,
+    "pd": 1.2960174679756165
+  },
+  "calibration": {
+    "method": "temperature scaling per head, NLL on validation split, kept only if 2-fold patient cross-fitting improves NLL",
+    "test_combined_ece": [
+      0.012778697918492852,
+      0.01780770032118398
+    ]
+  },
+  "referral": {
+    "threshold": 0.5047426819801331,
+    "target_accuracy": 0.98,
+    "rule": "refer to a specialist when combined-grade confidence < threshold",
+    "test_outcome": {
+      "threshold": 0.5047426819801331,
+      "coverage": 0.9964539007092199,
+      "accuracy_accepted": 0.9857651245551602,
+      "accuracy_referred": 1.0,
+      "accuracy_all": 0.9858156028368794,
+      "n": 282,
+      "n_referred": 1
+    }
+  },
+  "combined_rule": "0 if GS == 0 else max(GS, PD)",
+  "joints": [
+    "MCP2",
+    "MCP3",
+    "WRIST"
+  ],
+  "dataset_sha256": "78d077000df139b21956928f0206aab2b619851b0fc6b85ec3d449334d3028a5",
+  "test_metrics": {
+    "qwk": 0.9926903237512636,
+    "accuracy": 0.9858156028368794,
+    "balanced_accuracy": 0.9883448060075094,
+    "auc_ge2": 0.9995563442768411,
+    "n": 282
+  },
+  "onnx_opset": 17,
+  "parity_max_abs_diff": 1.8477439880371094e-06
+}

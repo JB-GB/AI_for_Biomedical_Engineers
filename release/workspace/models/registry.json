@@ -1,0 +1,22 @@
+{
+  "models": [
+    {
+      "version": "v0005",
+      "created": "2026-11-13T20:32:35",
+      "model_path": "v0005/model.pt",
+      "dataset_manifest": "datasets/v0005/manifest.csv",
+      "dataset_sha256": "78d077000df139b21956928f0206aab2b619851b0fc6b85ec3d449334d3028a5",
+      "stage": "S2",
+      "parent": "v0004",
+      "status": "current",
+      "test_metrics": {
+        "qwk": 0.9926903237512636,
+        "accuracy": 0.9858156028368794,
+        "balanced_accuracy": 0.9883448060075094,
+        "auc_ge2": 0.9995563442768411,
+        "n": 282
+      },
+      "decision": "candidate not significantly worse (diff +0.0474, 95% CI [+0.0145, +0.0977])"
+    }
+  ]
+}

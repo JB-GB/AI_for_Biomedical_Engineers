@@ -1,0 +1,28 @@
+{
+  "rausnet_version": "0.1.0",
+  "stage": "S2",
+  "clinically_validated": false,
+  "git_commit": "2ad7f2b9fd46f4cf8cfe96697c02ddcfe4ccfe26",
+  "manifest_sha256": "78d077000df139b21956928f0206aab2b619851b0fc6b85ec3d449334d3028a5",
+  "split_sizes": {
+    "train": 1338,
+    "val": 300,
+    "test": 282
+  },
+  "split_patients": {
+    "train": 223,
+    "val": 50,
+    "test": 47
+  },
+  "best_epoch": 16,
+  "val_combined_qwk": 0.9968530698303805,
+  "test_combined": {
+    "qwk": 0.9926903237512636,
+    "accuracy": 0.9858156028368794,
+    "balanced_accuracy": 0.9883448060075094,
+    "auc_ge2": 0.9995563442768411
+  },
+  "init_checkpoint": null,
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "torch": "2.14.1+cu126"
+}
