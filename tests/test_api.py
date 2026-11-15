@@ -84,3 +84,8 @@ def test_predict_with_heatmaps(client, synth_small):
         img = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1])))
         assert img.size == (96, 96) and img.mode == "RGB"
     assert "heatmaps" not in c.post("/predict", files=files(synth_small)).json()
+    params = {"explain": "true", "palette": "cividis"}
+    cividis = c.post("/predict", params=params, files=files(synth_small)).json()
+    assert cividis["heatmaps"]["gs"] != body["heatmaps"]["gs"]
+    bad = c.post("/predict", params={"explain": "true", "palette": "rainbow"}, files=files(synth_small))
+    assert bad.status_code == 422 and "palette" in bad.json()["detail"]

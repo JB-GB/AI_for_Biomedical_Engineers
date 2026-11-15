@@ -10,6 +10,7 @@ Endpoints:
     GET  /model        model sidecar (version, stage, validation status, metrics)
     POST /predict      multipart: gs (required), pd (optional) -> grades and probabilities;
                        ?explain=true adds Grad-CAM overlays as base64 PNG data URLs
+                       (&palette=cividis for a colour-blind-safe ramp; default warm)
     POST /corrections  multipart: gs, pd, patient_id, joint, side, gs_grade, pd_grade
                        -> stored in <data_dir>/incoming/corrections/<date>/ for the next retrain
     GET  /workspace/status  shared workspace: global model, images waiting, run in progress, history
@@ -118,11 +119,12 @@ def create_app(model_dir: str | Path, data_dir: str | Path | None = None, models
         return out
 
     @app.post("/predict")
-    async def predict(gs: UploadFile = File(...), pd: UploadFile | None = File(None), explain: bool = False):
+    async def predict(gs: UploadFile = File(...), pd: UploadFile | None = File(None), explain: bool = False,
+                      palette: str = "warm"):
         gs_img = await _read_image(gs, "gs")
         pd_img = await _read_image(pd, "pd") if pd is not None else None
         try:
-            result = state["predictor"].predict(gs_img, pd_img, explain=explain)
+            result = state["predictor"].predict(gs_img, pd_img, explain=explain, palette=palette)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if "heatmaps" in result:

@@ -49,3 +49,5 @@ def test_normalize_and_overlay():
     assert out.shape == (20, 30, 3) and out.dtype == np.uint8
     assert (out[0, 0] == 100).all()          # zero activation stays transparent
     assert out[-1, -1, 0] > out[-1, -1, 2]    # hot region tinted warm
+    mid = overlay(img, np.full((2, 2), 0.4, np.float32), palette="cividis")
+    assert mid[0, 0, 2] > mid[0, 0, 0]        # colour-blind-safe ramp: blue side, never red

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from rausnet.heatmap import normalize_cam, overlay
+from rausnet.heatmap import PALETTES, normalize_cam, overlay
 from rausnet.metrics import combined_probabilities, consistent_pd_probabilities
 
 ImageInput = str | Path | bytes | Image.Image | np.ndarray
@@ -89,10 +89,14 @@ class Predictor:
         providers = [p for p in wanted if p in ort.get_available_providers()]
         self.session = ort.InferenceSession(str(self.dir / "model.onnx"), providers=providers)
 
-    def predict(self, gs: ImageInput, pd: ImageInput | None = None, explain: bool = False) -> dict:
+    def predict(self, gs: ImageInput, pd: ImageInput | None = None, explain: bool = False,
+                palette: str = "warm") -> dict:
         """Grade one image pair. Probabilities are temperature-calibrated when the sidecar has
         temperatures. With ``explain`` and a CAM-enabled model, ``heatmaps`` holds uint8 RGB
-        overlays (Grad-CAM of the predicted grade) on the GS and PD images."""
+        overlays (Grad-CAM of the predicted grade) on the GS and PD images, coloured with
+        ``palette`` (see ``rausnet.heatmap.PALETTES``)."""
+        if palette not in PALETTES:
+            raise ValueError(f"unknown palette {palette!r}; choose one of {sorted(PALETTES)}")
         spec = self.info["input"]
         gs_img = _open(gs)
         pd_img = _open(pd) if pd is not None else None
@@ -128,7 +132,7 @@ class Predictor:
             gs_base = np.asarray(gs_img.convert("L"))
             pd_base = np.asarray(pd_img.convert("RGB")) if pd_img is not None else gs_base
             result["heatmaps"] = {
-                "gs": overlay(gs_base, normalize_cam(outs[2][0, result["gs"]["grade"]])),
-                "pd": overlay(pd_base, normalize_cam(outs[3][0, result["pd"]["grade"]])),
+                "gs": overlay(gs_base, normalize_cam(outs[2][0, result["gs"]["grade"]]), palette=palette),
+                "pd": overlay(pd_base, normalize_cam(outs[3][0, result["pd"]["grade"]]), palette=palette),
             }
         return result

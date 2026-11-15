@@ -38,8 +38,9 @@ class ApiClient:
     def model(self) -> dict:
         return self._check(self.http.get("/model"))
 
-    def predict(self, gs: str | Path, pd: str | Path | None = None, explain: bool = False) -> dict:
-        params = {"explain": "true"} if explain else None
+    def predict(self, gs: str | Path, pd: str | Path | None = None, explain: bool = False,
+                palette: str = "warm") -> dict:
+        params = {"explain": "true", "palette": palette} if explain else None
         return self._check(self.http.post("/predict", files=self._files(gs, pd), params=params))
 
     def correct(self, gs: str | Path, pd: str | Path | None, *, patient_id: str, joint: str, side: str,
