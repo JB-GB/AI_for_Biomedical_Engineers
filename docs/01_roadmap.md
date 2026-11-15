@@ -108,6 +108,7 @@ gantt
   F3 corrections · F4 local improvement + history/rollback · F5 accessibility audit + SUS).
   - T6.6 F1 ✅ tabs Analizar / Mejorar el modelo / Ajustes, `/workspace/status`, `/model/reload`, new-model banner.
   - T6.7 F2 ✅ drag & drop GS/PD pairing, shortcuts, spoken result, text size, high contrast, cividis heat map (NVDA walkthrough pending).
+  - T6.8 F3 ✅ one-click grade selectors (3 clicks), undo, today's cases (no identifiers), input checks.
 
 ### M7 — Multi-runtime execution
 - T7.1 Local: one-command install + run (CPU & GPU). ✅ (`scripts/setup_env.py`)

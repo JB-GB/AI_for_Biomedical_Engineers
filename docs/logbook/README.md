@@ -29,3 +29,4 @@ These entries feed the *Methods*, *Results* and *Limitations* sections of the pa
 | 2026-11-14 | [One-click global model improvement, CI fix, interface plan](2026-11-14_M7-T7.5_global-improvement.md) | M7/M6 | Result / Decision |
 | 2026-11-14 | [Interface F1: workspace panel, model reload](2026-11-14_M6-T6.6_interface-f1.md) | M6 | Result |
 | 2026-11-14 | [Interface F2: accessible single-image flow](2026-11-14_M6-T6.7_interface-f2.md) | M6 | Result |
+| 2026-11-14 | [Interface F3: correction workflow](2026-11-14_M6-T6.8_interface-f3.md) | M6 | Result |
