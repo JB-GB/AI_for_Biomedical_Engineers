@@ -50,7 +50,7 @@ def test_analyze_and_submit_correction(window, synth_small):
     w.gs_panel.set_path(synth_small / r.gs_path)
     w.pd_panel.set_path(synth_small / r.pd_path)
     res = w.analyze()
-    assert w.combined.text() == str(res["combined"]["grade"])
+    assert w.combined.text().startswith(f"{res['combined']['grade']} · ")
     assert sum(b.value() for b in w.bars) in range(97, 104)
 
     w.patient.setText("HOSP-0042")

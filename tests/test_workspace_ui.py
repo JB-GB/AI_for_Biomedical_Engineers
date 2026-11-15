@@ -18,7 +18,7 @@ from rausnet.data.synthetic import generate_dataset
 from rausnet.improve import Workspace, colab_url
 from rausnet.registry import ModelEntry, Registry
 from rausnet.serve.api import create_app, resolve_model_dir
-from rausnet.ui.app import MainWindow, workspace_problem
+from rausnet.ui.app import MainWindow, settings, workspace_problem
 from rausnet.ui.client import ApiClient, ApiError
 from rausnet.ui.improve_view import history_line, quality_words
 
@@ -137,16 +137,14 @@ def test_panel_without_workspace_guides_to_settings(qapp, onnx_model):
     assert [w.tabs.tabText(i) for i in range(3)] == ["Analizar", "Mejorar el modelo", "Ajustes"]
 
 
-def test_choose_workspace_validates_and_switches(qapp, workspace, onnx_model, tmp_path, monkeypatch):
-    stored = {}
-    monkeypatch.setattr("rausnet.ui.app.settings", lambda: type("S", (), {"setValue": stored.__setitem__})())
+def test_choose_workspace_validates_and_switches(qapp, workspace, onnx_model, tmp_path):
     first = ApiClient(http=TestClient(create_app(onnx_model[0])))
     w = MainWindow(first, "en", connect=lambda path: _client(Workspace(path)))
     assert workspace_problem(tmp_path / "empty") is not None
     assert not w.choose_workspace(str(tmp_path / "empty")) and "no ready global model" in w.ws_msg.text()
     assert workspace_problem(workspace.root) is None
     assert w.choose_workspace(str(workspace.root))
-    assert stored == {"workspace": str(workspace.root)} and "v0001" in w.model_label.text()
+    assert settings().value("workspace") == str(workspace.root) and "v0001" in w.model_label.text()
     assert w.improve_view.last["served_version"] == "v0001" and w.improve_view.colab_btn.isEnabled()
 
 

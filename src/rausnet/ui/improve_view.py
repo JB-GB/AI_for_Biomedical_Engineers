@@ -153,14 +153,12 @@ class ImproveView(QWidget):
         self.progress.setTextVisible(False)
         self.progress.setMinimumHeight(22)
         self.progress_text = QLabel("")
-        self.progress_text.setStyleSheet("font-size:15px;")
         self.incomplete = QLabel("")
-        self.incomplete.setStyleSheet("color:#8a5300;")
+        self.incomplete.setObjectName("incomplete")
         self.running = QLabel("")
 
         self.colab_btn = QPushButton(t["colab"])
-        self.colab_btn.setMinimumHeight(44)
-        self.colab_btn.setStyleSheet("font-size:15px; font-weight:bold;")
+        self.colab_btn.setMinimumHeight(48)
         self.colab_btn.setToolTip(t["colab_tip"])
         self.colab_btn.clicked.connect(lambda: self.open_colab())
         self.refresh_btn = QPushButton(t["refresh"])
@@ -172,6 +170,7 @@ class ImproveView(QWidget):
 
         self.history = QLabel("")
         self.history.setWordWrap(True)
+        self.scaled_fonts = [(self.colab_btn, 1.2, True), (self.progress_text, 1.2, False)]
         hist = QGroupBox(t["history"])
         QVBoxLayout(hist).addWidget(self.history)
 

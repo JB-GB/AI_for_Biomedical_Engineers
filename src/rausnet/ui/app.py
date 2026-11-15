@@ -15,6 +15,7 @@ adopts a new global model without restarting.
 from __future__ import annotations
 
 import argparse
+import itertools
 import os
 import socket
 import sys
@@ -24,7 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rausnet.ui import accessibility as a11y
 from rausnet.ui.client import ApiClient, ApiError
 from rausnet.ui.improve_view import STRINGS as IMPROVE_STRINGS
 from rausnet.ui.improve_view import ImproveView
@@ -160,13 +162,21 @@ SETTINGS_STRINGS = {
 for _lang, _table in STRINGS.items():
     _table.update(IMPROVE_STRINGS[_lang])
     _table.update(SETTINGS_STRINGS[_lang])
+    _table.update(a11y.STRINGS[_lang])
+    _table["no_image"] = _table["drop_hint"]
 
 PREVIEW = 260
 POLL_MS = 120_000  # workspace status refresh (new model banner, images waiting)
 
 
 def settings() -> QSettings:
-    return QSettings("RAUSNet", "desktop")
+    """Per-user preferences (registry on Windows; tests redirect the default format to a file)."""
+    return QSettings(QSettings.defaultFormat(), QSettings.Scope.UserScope, "RAUSNet", "desktop")
+
+
+def _local_files(event) -> list[str]:
+    mime = event.mimeData()
+    return [u.toLocalFile() for u in mime.urls() if u.isLocalFile()] if mime.hasUrls() else []
 
 
 def workspace_problem(path: str | Path) -> str | None:
@@ -181,20 +191,39 @@ def workspace_problem(path: str | Path) -> str | None:
 
 
 class ImagePanel(QGroupBox):
-    def __init__(self, title: str, t: dict):
+    """One image slot. A single dropped image goes here; two dropped images go to ``on_files``
+    (the window pairs them as GS + PD)."""
+
+    def __init__(self, title: str, t: dict, on_files: Callable[[list[str]], object] | None = None):
         super().__init__(title)
-        self.t, self.path = t, None
+        self.t, self.path, self.on_files = t, None, on_files
         self.original: QPixmap | None = None
         self.heatmap: QPixmap | None = None
         self.view = QLabel(t["no_image"])
+        self.view.setObjectName("imageView")
         self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.view.setFixedSize(PREVIEW, PREVIEW)
-        self.view.setStyleSheet("background:#111; color:#aaa; border-radius:4px;")
+        self.view.setAccessibleName(t["preview"].format(title=title))
         self.button = QPushButton(t["load"])
+        self.button.setMinimumHeight(44)
+        self.button.setAccessibleName(f"{t['load']} {title}")
         self.button.clicked.connect(self.choose)
+        self.setAcceptDrops(True)
         lay = QVBoxLayout(self)
         lay.addWidget(self.view)
         lay.addWidget(self.button)
+
+    def dragEnterEvent(self, event) -> None:
+        if any(a11y.is_image(f) for f in _local_files(event)):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        files = [f for f in _local_files(event) if a11y.is_image(f)]
+        if len(files) == 1:
+            self.set_path(files[0])
+        elif files and self.on_files:
+            self.on_files(files)
+        event.acceptProposedAction()
 
     def choose(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, self.title(), "", self.t["images"])
@@ -212,8 +241,10 @@ class ImagePanel(QGroupBox):
         self.original = self._scaled(QPixmap(self.path)) if self.path else None
         if self.original:
             self.view.setPixmap(self.original)
+            self.view.setAccessibleDescription(Path(self.path).name)
         else:
             self.view.setText(self.t["no_image"])
+            self.view.setAccessibleDescription("")
 
     def set_heatmap(self, data_url: str | None) -> None:
         """Store a Grad-CAM overlay received from the API as a base64 PNG data URL."""
@@ -240,60 +271,73 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(self.t["title"])
         info = client.model()
 
+        self.prefs = settings()
         self.banner = QLabel()
+        self.banner.setObjectName("banner")
         validated = info.get("clinically_validated", False)
+        self.banner.setProperty("validated", "true" if validated else "false")
         self.banner.setText(self.t["banner_validated" if validated else "banner_unvalidated"])
         self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.banner.setStyleSheet(
-            "font-weight:bold; padding:8px; border-radius:4px; color:#fff; background:"
-            + ("#0b7a0b;" if validated else "#b3261e;")
-        )
         self.model_label = QLabel()
-        self.model_label.setStyleSheet("color:#555;")
+        self.model_label.setObjectName("modelLabel")
         self._show_model(info)
 
         # new global model available in the workspace
         self.new_model_text = QLabel("")
         self.new_model_btn = QPushButton(self.t["use_new"])
-        self.new_model_btn.setMinimumHeight(36)
+        self.new_model_btn.setMinimumHeight(44)
         self.new_model_btn.setAccessibleName(self.t["use_new"])
         self.new_model_btn.clicked.connect(lambda: self.adopt_new_model())
         self.new_model_bar = QWidget()
         self.new_model_bar.setObjectName("newModelBar")
         self.new_model_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.new_model_bar.setStyleSheet("#newModelBar {background:#e8f0fe; border:1px solid #1a56db;"
-                                         " border-radius:4px;}")
         bar = QHBoxLayout(self.new_model_bar)
         bar.addWidget(self.new_model_text, 1)
         bar.addWidget(self.new_model_btn)
         self.new_model_bar.hide()
 
-        self.gs_panel = ImagePanel(self.t["gs_image"], self.t)
-        self.pd_panel = ImagePanel(self.t["pd_image"], self.t)
-        self.analyze_btn = QPushButton(self.t["analyze"])
-        self.analyze_btn.setMinimumHeight(40)
-        self.analyze_btn.setStyleSheet("font-size:15px; font-weight:bold;")
+        self.gs_panel = ImagePanel(self.t["gs_image"], self.t, self.load_files)
+        self.pd_panel = ImagePanel(self.t["pd_image"], self.t, self.load_files)
+        self.setAcceptDrops(True)
+        self.analyze_btn = QPushButton(f"{self.t['analyze']}  ({self.t['sc_analyze']})")
+        self.analyze_btn.setAccessibleName(self.t["analyze"])
+        self.analyze_btn.setMinimumHeight(48)
         self.analyze_btn.clicked.connect(self.analyze)
         self.heatmap_box = QCheckBox(self.t["heatmap"])
+        self.heatmap_box.setMinimumHeight(44)
         self.heatmap_box.toggled.connect(self.toggle_heatmap)
         self.result: dict | None = None
-        self.export_btn = QPushButton(self.t["export_pdf"])
+        self.export_btn = QPushButton(f"{self.t['export_pdf']}  ({self.t['sc_pdf']})")
+        self.export_btn.setAccessibleName(self.t["export_pdf"])
+        self.export_btn.setMinimumHeight(44)
         self.export_btn.setEnabled(False)
         self.export_btn.clicked.connect(lambda: self.export_pdf())
+        self.palette_name = str(self.prefs.value("palette", "warm"))
 
         images = QHBoxLayout()
         images.addWidget(self.gs_panel)
         images.addWidget(self.pd_panel)
 
         # Result panel
+        self.result_summary = QLabel(self.t["no_result"])
+        self.result_summary.setObjectName("resultSummary")
+        self.result_summary.setWordWrap(True)
+        self.result_summary.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # Tab reaches it; readers read it
+        self.result_summary.setAccessibleName(self.t["result_summary"])
+        self.result_summary.setAccessibleDescription(self.t["no_result"])
+        self.refer_banner = QLabel("⚠ " + self.t["r_refer"])
+        self.refer_banner.setObjectName("referBanner")
+        self.refer_banner.setWordWrap(True)
+        self.refer_banner.hide()
         self.combined = QLabel("-")
-        self.combined.setStyleSheet("font-size:40px; font-weight:bold;")
         self.confidence = QLabel("-")
         self.gs_grade = QLabel("-")
         self.pd_grade = QLabel("-")
         self.bars = []
         result = QGroupBox(self.t["result"])
         form = QFormLayout(result)
+        form.addRow(self.result_summary)
+        form.addRow(self.refer_banner)
         form.addRow(self.t["combined"], self.combined)
         form.addRow(self.t["confidence"], self.confidence)
         form.addRow(self.t["gs_grade"], self.gs_grade)
@@ -302,15 +346,16 @@ class MainWindow(QMainWindow):
         for g in range(4):
             bar = QProgressBar()
             bar.setRange(0, 100)
-            bar.setFormat("%p%")
+            bar.setFormat("%p %")
+            bar.setAccessibleName(self.t["bar"].format(g=g))
             self.bars.append(bar)
             grid.addWidget(QLabel(f"{g}"), g, 0)
             grid.addWidget(bar, g, 1)
         form.addRow(QLabel(self.t["probabilities"]))
         form.addRow(grid)
         self.warnings = QLabel("")
+        self.warnings.setObjectName("warnings")
         self.warnings.setWordWrap(True)
-        self.warnings.setStyleSheet("color:#8a5300;")
         form.addRow(self.warnings)
 
         # Correction panel
@@ -325,14 +370,20 @@ class MainWindow(QMainWindow):
         self.gs_fix = QComboBox()
         self.pd_fix = QComboBox()
         for box in (self.gs_fix, self.pd_fix):
-            box.addItems(["0", "1", "2", "3"])
+            box.addItems([a11y.grade_text(g, self.t) for g in range(4)])
         self.submit_btn = QPushButton(self.t["submit"])
+        self.submit_btn.setMinimumHeight(44)
         self.submit_btn.clicked.connect(self.submit)
         self.status = QLabel("")
+        self.status.setWordWrap(True)
         for label, widget in ((self.t["patient"], self.patient), (self.t["joint"], self.joint),
                               (self.t["side"], self.side), (self.t["gs_grade"], self.gs_fix),
                               (self.t["pd_grade"], self.pd_fix)):
+            widget.setAccessibleName(label)
+            widget.setMinimumHeight(44)
             cform.addRow(label, widget)
+        self.gs_fix.setAccessibleName(f"{self.t['correction']}: {self.t['gs_grade']}")
+        self.pd_fix.setAccessibleName(f"{self.t['correction']}: {self.t['pd_grade']}")
         cform.addRow(self.submit_btn)
         cform.addRow(self.status)
 
@@ -368,6 +419,24 @@ class MainWindow(QMainWindow):
         central.setLayout(root)
         self.setCentralWidget(central)
 
+        hint = QLabel(self.t["help_hint"])
+        self.statusBar().addPermanentWidget(hint)
+        for keys, action in ((("Ctrl+Return", "Ctrl+Enter"), self.analyze), (("Ctrl+O",), self.open_images),
+                             (("Ctrl+P",), self.export_pdf), (("Ctrl+K",), self.focus_correction),
+                             (("F1",), self.show_help)):
+            for key in keys:
+                QShortcut(QKeySequence(key), self, activated=lambda a=action: a())
+        chain = [self.gs_panel.button, self.pd_panel.button, self.analyze_btn, self.result_summary,
+                 self.heatmap_box, self.export_btn, self.patient, self.joint, self.side, self.gs_fix,
+                 self.pd_fix, self.submit_btn]
+        for a, b in itertools.pairwise(chain):
+            QWidget.setTabOrder(a, b)
+        self.tab_chain = chain
+        self.scaled_fonts = [(self.analyze_btn, 1.25, True), (self.combined, 2.8, True),
+                             (self.result_summary, 1.15, False), (self.refer_banner, 1.1, True),
+                             *self.improve_view.scaled_fonts]
+        self.apply_preferences()
+
         self.improve_view.refresh()
         self.poll = QTimer(self)
         self.poll.setInterval(POLL_MS)
@@ -380,7 +449,7 @@ class MainWindow(QMainWindow):
         self.ws_label = QLabel(self.workspace or self.t["ws_none"])
         self.ws_label.setWordWrap(True)
         self.ws_btn = QPushButton(self.t["choose_folder"])
-        self.ws_btn.setMinimumHeight(40)
+        self.ws_btn.setMinimumHeight(44)
         self.ws_btn.setAccessibleName(self.t["choose_folder"])
         self.ws_btn.setAccessibleDescription(self.t["ws_folder"])
         self.ws_btn.clicked.connect(lambda: self.choose_workspace())
@@ -390,7 +459,80 @@ class MainWindow(QMainWindow):
         form.addRow(self.t["ws_folder"], self.ws_label)
         form.addRow(self.ws_btn)
         form.addRow(self.ws_msg)
+
+        self.text_size = QComboBox()
+        self.text_size.addItems([f"{p} %" for p in a11y.TEXT_SCALES])
+        self.contrast_box = QCheckBox(self.t["high_contrast"])
+        self.palette_box = QComboBox()
+        self.palette_box.addItem(self.t["pal_warm"], "warm")
+        self.palette_box.addItem(self.t["pal_cividis"], "cividis")
+        scale = int(self.prefs.value("text_scale", 100))
+        self.text_size.setCurrentIndex(a11y.TEXT_SCALES.index(scale) if scale in a11y.TEXT_SCALES else 0)
+        self.contrast_box.setChecked(str(self.prefs.value("high_contrast", "false")).lower() == "true")
+        self.palette_box.setCurrentIndex(max(0, self.palette_box.findData(self.prefs.value("palette", "warm"))))
+        for label, widget in ((self.t["text_size"], self.text_size), (self.t["palette"], self.palette_box)):
+            widget.setAccessibleName(label)
+            widget.setMinimumHeight(44)
+        self.contrast_box.setMinimumHeight(44)
+        form.addRow(self.t["text_size"], self.text_size)
+        form.addRow(self.contrast_box)
+        form.addRow(self.t["palette"], self.palette_box)
+        self.text_size.currentIndexChanged.connect(lambda _i: self.save_preferences())
+        self.contrast_box.toggled.connect(lambda _on: self.save_preferences())
+        self.palette_box.currentIndexChanged.connect(lambda _i: self.save_preferences())
         return tab
+
+    def save_preferences(self) -> None:
+        self.prefs.setValue("text_scale", a11y.TEXT_SCALES[self.text_size.currentIndex()])
+        self.prefs.setValue("high_contrast", "true" if self.contrast_box.isChecked() else "false")
+        self.prefs.setValue("palette", self.palette_box.currentData())
+        self.apply_preferences()
+
+    def apply_preferences(self) -> None:
+        """Theme, text size and heat-map colours; the latter apply from the next analysis."""
+        self.setStyleSheet(a11y.stylesheet(self.contrast_box.isChecked()))
+        a11y.apply_text_scale(a11y.TEXT_SCALES[self.text_size.currentIndex()], self.scaled_fonts)
+        self.palette_name = self.palette_box.currentData()
+
+    # ---- keyboard and drag-and-drop
+    def dragEnterEvent(self, event) -> None:
+        if any(a11y.is_image(f) for f in _local_files(event)):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        self.load_files(_local_files(event))
+        event.acceptProposedAction()
+
+    def load_files(self, paths: list[str]) -> dict | None:
+        """Put one or two image files in the right slots (GS / PD) and say what happened."""
+        if not any(a11y.is_image(p) for p in paths):
+            self._tell(self.t["not_image"])
+            return None
+        pair = a11y.pair_images(paths)
+        for panel, key in ((self.gs_panel, "gs"), (self.pd_panel, "pd")):
+            if pair[key]:
+                panel.set_path(pair[key])
+        names = {k: Path(v).name if v else self.t["none"] for k, v in
+                 (("gs", self.gs_panel.path), ("pd", self.pd_panel.path))}
+        msg = self.t["paired"].format(**names)
+        self._tell(msg + (" " + self.t["paired_guess"] if pair["guessed"] else ""))
+        return pair
+
+    def open_images(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(self, self.t["open_images"], "", self.t["images"])
+        if paths:
+            self.load_files(paths)
+
+    def focus_correction(self) -> None:
+        self.tabs.setCurrentIndex(0)
+        self.gs_fix.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def show_help(self) -> None:
+        QMessageBox.information(self, self.t["help_title"], self.t["help_text"])
+
+    def _tell(self, text: str) -> None:
+        self.status.setText(text)
+        a11y.announce(self.status, text)
 
     def _show_model(self, info: dict) -> None:
         self.model_label.setText(self.t["model"].format(version=info["version"], stage=info["stage"]))
@@ -450,7 +592,8 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, self.t["title"], self.t["need_gs"])
             return None
         try:
-            res = self.client.predict(self.gs_panel.path, self.pd_panel.path, explain=True)
+            res = self.client.predict(self.gs_panel.path, self.pd_panel.path, explain=True,
+                                      palette=self.palette_name)
         except (ApiError, OSError) as exc:
             self._error(exc)
             return None
@@ -458,10 +601,11 @@ class MainWindow(QMainWindow):
         self.result = {"res": res, "gs": self.gs_panel.path, "pd": self.pd_panel.path}
         self.export_btn.setEnabled(True)
         c = res["combined"]
-        self.combined.setText(str(c["grade"]))
-        self.confidence.setText(f"{c['confidence']:.0%}")
-        self.gs_grade.setText(str(res["gs"]["grade"]))
-        self.pd_grade.setText(str(res["pd"]["grade"]))
+        self.combined.setText(a11y.grade_text(c["grade"], self.t))
+        self.confidence.setText(f"{a11y.confidence_words(c['confidence'], self.t)} ({a11y.percent(c['confidence'])})")
+        self.gs_grade.setText(a11y.grade_text(res["gs"]["grade"], self.t))
+        self.pd_grade.setText(a11y.grade_text(res["pd"]["grade"], self.t))
+        self.refer_banner.setVisible(bool(res.get("refer")))
         for bar, p in zip(self.bars, c["probabilities"], strict=True):
             bar.setValue(round(100 * p))
         codes = res.get("warning_codes") or []
@@ -473,6 +617,11 @@ class MainWindow(QMainWindow):
         self.toggle_heatmap(self.heatmap_box.isChecked())
         self.gs_fix.setCurrentIndex(res["gs"]["grade"])
         self.pd_fix.setCurrentIndex(res["pd"]["grade"] if self.pd_panel.path else 0)
+        spoken = a11y.spoken_result(res, self.t)
+        self.result_summary.setText(spoken)
+        self.result_summary.setAccessibleDescription(spoken)
+        self.result_summary.setFocus(Qt.FocusReason.OtherFocusReason)
+        a11y.announce(self.result_summary, spoken)
         return res
 
     def export_pdf(self, path: str | None = None) -> Path | None:
@@ -504,12 +653,12 @@ class MainWindow(QMainWindow):
             res = self.client.correct(
                 self.gs_panel.path, self.pd_panel.path, patient_id=self.patient.text().strip(),
                 joint=self.joint.currentText(), side=self.side.currentText(),
-                gs_grade=int(self.gs_fix.currentText()), pd_grade=int(self.pd_fix.currentText()),
+                gs_grade=self.gs_fix.currentIndex(), pd_grade=self.pd_fix.currentIndex(),
             )
         except (ApiError, OSError) as exc:
             self._error(exc)
             return None
-        self.status.setText(self.t["sent"].format(image_id=res["image_id"]))
+        self._tell(self.t["sent"].format(image_id=res["image_id"]))
         return res
 
 

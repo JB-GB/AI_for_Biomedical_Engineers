@@ -33,3 +33,16 @@ def onnx_model(tmp_path_factory):
                "input": {"name": "input", "size": 64, "mean": MEAN, "std": STD}}
     (d / "model.json").write_text(json.dumps(sidecar))
     return d, net
+
+
+@pytest.fixture(autouse=True)
+def isolated_qt_settings(tmp_path_factory):
+    """Desktop preferences go to a temporary INI file, never to the user's registry."""
+    try:
+        from PySide6.QtCore import QSettings
+    except ImportError:
+        yield
+        return
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path_factory.mktemp("qt")))
+    yield
