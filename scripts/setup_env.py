@@ -4,6 +4,7 @@ Usage (from the repository root, any OS, Python >= 3.10):
     python scripts/setup_env.py            # NVIDIA GPU (CUDA 12.6 wheels)
     python scripts/setup_env.py --cpu      # no GPU
     python scripts/setup_env.py --extras train,serve,ui   # fewer extras (default: all)
+    python scripts/setup_env.py --app-only # desktop app only: no PyTorch, no training (about 400 MB less)
 
 Creates ``.venv`` (or ``--venv``), installs torch from the official PyTorch index, then
 ``pip install -e .[extras]``, activates the commit-msg hook and prints a device check.
@@ -36,6 +37,7 @@ def main(argv=None) -> None:
     parser.add_argument("--cpu", action="store_true", help="CPU-only PyTorch")
     parser.add_argument("--venv", default=".venv")
     parser.add_argument("--extras", default="train,serve,ui,dev,paper")
+    parser.add_argument("--app-only", action="store_true", help="desktop app only (serve,ui extras, no PyTorch)")
     args = parser.parse_args(argv)
     if sys.version_info < (3, 10):
         sys.exit("Python >= 3.10 required")
@@ -46,12 +48,20 @@ def main(argv=None) -> None:
         venv.create(env_dir, with_pip=True)
     py = venv_python(env_dir)
     run(py, "-m", "pip", "install", "-q", "--upgrade", "pip")
-    index = TORCH_INDEX["cpu" if args.cpu else "gpu"]
-    run(py, "-m", "pip", "install", "-q", "torch", "torchvision", "--index-url", index)
-    run(py, "-m", "pip", "install", "-q", "-e", f".[{args.extras}]")
-    run("git", "config", "core.hooksPath", ".githooks")
-    run(py, "-c", "import torch, rausnet; print('rausnet', rausnet.__version__, '| torch', torch.__version__, "
-                  "'| CUDA', torch.cuda.is_available())")
+    if args.app_only:
+        run(py, "-m", "pip", "install", "-q", "-e", ".[serve,ui]")
+    else:
+        index = TORCH_INDEX["cpu" if args.cpu else "gpu"]
+        run(py, "-m", "pip", "install", "-q", "torch", "torchvision", "--index-url", index)
+        run(py, "-m", "pip", "install", "-q", "-e", f".[{args.extras}]")
+    if (ROOT / ".git").exists():
+        run("git", "config", "core.hooksPath", ".githooks")
+    if args.app_only:
+        run(py, "-c", "import rausnet, onnxruntime, PySide6; print('rausnet', rausnet.__version__, "
+                      "'| onnxruntime', onnxruntime.__version__, '| PySide6', PySide6.__version__)")
+    else:
+        run(py, "-c", "import torch, rausnet; print('rausnet', rausnet.__version__, '| torch', torch.__version__, "
+                      "'| CUDA', torch.cuda.is_available())")
     print("\nnext: set RAUSNET_DATA_DIR to a folder outside the repo, then see docs/RESUME.md")
 
 
