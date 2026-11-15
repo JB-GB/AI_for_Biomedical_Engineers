@@ -158,6 +158,9 @@ def test_text_size_contrast_and_palette_are_applied_and_remembered(window, pair,
     window.text_size.setCurrentIndex(a11y.TEXT_SCALES.index(200))
     assert qapp.font().pointSizeF() == pytest.approx(2 * base)
     assert window.combined.font().pointSizeF() == pytest.approx(2 * base * 2.8)
+    # ordinary controls too: under a style sheet the application font alone does not reach them
+    for w in (window.gs_panel.button, window.heatmap_box, window.gs_panel, window.improve_view.colab_btn):
+        assert w.font().pointSizeF() >= 2 * base - 0.01, type(w).__name__
     window.contrast_box.setChecked(True)
     assert "#000000" in window.styleSheet()
     window.palette_box.setCurrentIndex(window.palette_box.findData("cividis"))

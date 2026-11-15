@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 TEXT_SCALES = (100, 125, 150, 175, 200)
@@ -229,9 +229,15 @@ def stylesheet(high_contrast: bool = False) -> str:
 _BASE_POINT_SIZE: list[float] = []
 
 
-def apply_text_scale(percent_: int, scaled: Iterable[tuple[QWidget, float, bool]] = ()) -> float:
-    """Scale the application font to ``percent_`` of the system size; ``scaled`` lists widgets with
-    their own relative size (factor, bold). Returns the new base point size."""
+def apply_text_scale(percent_: int, scaled: Iterable[tuple[QWidget, float, bool]] = (),
+                     root: QWidget | None = None) -> float:
+    """Scale text to ``percent_`` of the system size and return the new base point size.
+
+    ``scaled`` lists widgets with their own relative size (factor, bold). With ``root`` every widget
+    under it gets the font explicitly: under a style sheet Qt does not pass font changes from the
+    application or a parent down to child widgets, so changing only the application font left most
+    of the window at 100 % (found with the F5 screenshot at 200 %).
+    """
     app = QApplication.instance()
     if not _BASE_POINT_SIZE:
         _BASE_POINT_SIZE.append(app.font().pointSizeF() if app.font().pointSizeF() > 0 else 9.0)
@@ -239,9 +245,14 @@ def apply_text_scale(percent_: int, scaled: Iterable[tuple[QWidget, float, bool]
     font = QFont(app.font())
     font.setPointSizeF(base)
     app.setFont(font)
-    for widget, factor, bold in scaled:
+    QToolTip.setFont(font)
+    special = {id(w): (factor, bold) for w, factor, bold in scaled}
+    widgets = ([root, *root.findChildren(QWidget)] if root is not None else []) + [w for w, _f, _b in scaled]
+    for widget in widgets:
+        factor, bold = special.get(id(widget), (1.0, None))
         f = QFont(widget.font())
         f.setPointSizeF(base * factor)
-        f.setBold(bold)
+        if bold is not None:
+            f.setBold(bold)
         widget.setFont(f)
     return base

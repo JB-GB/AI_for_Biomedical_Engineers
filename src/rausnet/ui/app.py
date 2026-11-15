@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -83,7 +85,8 @@ STRINGS = {
         "w_not_validated": "Modelo no validado clínicamente: solo investigación, no para diagnóstico.",
         "w_no_pd": "Sin imagen Power Doppler: los grados PD y combinado no son confiables.",
         "w_refer_specialist": "Confianza baja: derivar a un especialista para la calificación.",
-        "heatmap": "Mostrar mapa de calor (Grad-CAM): zonas que más influyeron en el grado",
+        "heatmap": "Mostrar mapa de calor",
+        "heatmap_help": "Zonas que más influyeron en el grado (Grad-CAM).",
         "export_pdf": "Exportar informe PDF",
         "pdf_files": "Documentos PDF (*.pdf)",
         "pdf_saved": "Informe guardado: {path}",
@@ -125,7 +128,8 @@ STRINGS = {
         "w_not_validated": "Model not clinically validated: research use only, not for diagnosis.",
         "w_no_pd": "No Power Doppler image: PD and combined grades are unreliable.",
         "w_refer_specialist": "Low confidence: refer to a specialist for grading.",
-        "heatmap": "Show heat map (Grad-CAM): regions that most influenced the grade",
+        "heatmap": "Show heat map",
+        "heatmap_help": "Regions that most influenced the grade (Grad-CAM).",
         "export_pdf": "Export PDF report",
         "pdf_files": "PDF documents (*.pdf)",
         "pdf_saved": "Report saved: {path}",
@@ -193,6 +197,15 @@ def workspace_problem(path: str | Path) -> str | None:
     return None
 
 
+def _scrolling(page: QWidget) -> QScrollArea:
+    area = QScrollArea()
+    area.setWidget(page)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    return area
+
+
 class ImagePanel(QGroupBox):
     """One image slot. A single dropped image goes here; two dropped images go to ``on_files``
     (the window pairs them as GS + PD)."""
@@ -207,6 +220,7 @@ class ImagePanel(QGroupBox):
         self.view.setObjectName("imageView")
         self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.view.setFixedSize(PREVIEW, PREVIEW)
+        self.view.setWordWrap(True)  # the drop hint must fit at 200 % text
         self.view.setAccessibleName(t["preview"].format(title=title))
         self.button = QPushButton(t["load"])
         self.button.setMinimumHeight(44)
@@ -311,6 +325,10 @@ class MainWindow(QMainWindow):
         self.analyze_btn.clicked.connect(self.analyze)
         self.heatmap_box = QCheckBox(self.t["heatmap"])
         self.heatmap_box.setMinimumHeight(44)
+        # short label + wrapped explanation: a checkbox text cannot wrap at 200 % text size
+        self.heatmap_box.setAccessibleDescription(self.t["heatmap_help"])
+        self.heatmap_help = QLabel(self.t["heatmap_help"])
+        self.heatmap_help.setWordWrap(True)
         self.heatmap_box.toggled.connect(self.toggle_heatmap)
         self.result: dict | None = None
         self.export_btn = QPushButton(f"{self.t['export_pdf']}  ({self.t['sc_pdf']})")
@@ -425,6 +443,7 @@ class MainWindow(QMainWindow):
         left.addWidget(self.input_note)
         left.addWidget(self.analyze_btn)
         left.addWidget(self.heatmap_box)
+        left.addWidget(self.heatmap_help)
         left.addWidget(self.export_btn)
         left.addWidget(self.today_box, 1)
         body = QHBoxLayout()
@@ -437,9 +456,10 @@ class MainWindow(QMainWindow):
         self.improve_view.status_changed.connect(self._on_status)
         self.improve_view.model_switched.connect(lambda res: self._model_changed(res["served_version"]))
         self.tabs = QTabWidget()
-        self.tabs.addTab(analyze_tab, self.t["tab_analyze"])
-        self.tabs.addTab(self.improve_view, self.t["tab_improve"])
-        self.tabs.addTab(self._settings_tab(), self.t["tab_settings"])
+        # each tab scrolls vertically: the window fits small laptop screens at every text size
+        self.tabs.addTab(_scrolling(analyze_tab), self.t["tab_analyze"])
+        self.tabs.addTab(_scrolling(self.improve_view), self.t["tab_improve"])
+        self.tabs.addTab(_scrolling(self._settings_tab()), self.t["tab_settings"])
         self.tabs.currentChanged.connect(lambda i: self.improve_view.refresh() if i == 1 else None)
 
         root = QVBoxLayout()
@@ -530,7 +550,7 @@ class MainWindow(QMainWindow):
     def apply_preferences(self) -> None:
         """Theme, text size and heat-map colours; the latter apply from the next analysis."""
         self.setStyleSheet(a11y.stylesheet(self.contrast_box.isChecked()))
-        a11y.apply_text_scale(a11y.TEXT_SCALES[self.text_size.currentIndex()], self.scaled_fonts)
+        a11y.apply_text_scale(a11y.TEXT_SCALES[self.text_size.currentIndex()], self.scaled_fonts, root=self)
         self.palette_name = self.palette_box.currentData()
         self.improve_view.set_admin(self.admin_box.isChecked())
 
