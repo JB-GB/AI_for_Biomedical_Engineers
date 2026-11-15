@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rausnet import improve
 from rausnet.ui import accessibility as a11y
 from rausnet.ui import corrections as corr
 from rausnet.ui.client import ApiClient, ApiError
@@ -157,6 +158,9 @@ SETTINGS_STRINGS = {
                        "Crea el primero con «Mejorar en Colab»."),
         "ws_remote": "La aplicación usa un servidor externo: la carpeta compartida se configura en el servidor.",
         "ws_applied": "Carpeta compartida en uso: {path}",
+        "ws_local": "{path} (carpeta local de este equipo: elige una carpeta en Google Drive para compartir)",
+        "ws_seed_ask": ("Esta carpeta no tiene un modelo global. ¿Prepararla como carpeta compartida con el "
+                        "modelo {version} incluido? Se crearán dentro las carpetas «models» y «data»."),
     },
     "en": {
         "ws_folder": "Shared folder (global model and corrections)",
@@ -166,6 +170,9 @@ SETTINGS_STRINGS = {
                        "Create the first one with 'Improve on Colab'."),
         "ws_remote": "The app uses an external server: the shared folder is configured on the server.",
         "ws_applied": "Shared folder in use: {path}",
+        "ws_local": "{path} (local folder of this computer: choose a Google Drive folder to share)",
+        "ws_seed_ask": ("This folder has no global model. Set it up as the shared folder with the bundled "
+                        "model {version}? The folders 'models' and 'data' will be created in it."),
     },
 }
 for _lang, _table in STRINGS.items():
@@ -289,8 +296,11 @@ class MainWindow(QMainWindow):
 
     def __init__(self, client: ApiClient, lang: str = "es",
                  connect: Callable[[str], ApiClient] | None = None, workspace: str | None = None,
-                 study: StudyLog | None = None):
+                 study: StudyLog | None = None, seed: str | Path | None = None,
+                 local_workspace: str | None = None):
         super().__init__()
+        self.seed = Path(seed) if seed else None  # bundled workspace seed: sets up empty shared folders
+        self.local_workspace = local_workspace
         self.client, self.t, self.connect, self.workspace = client, STRINGS[lang], connect, workspace
         self.study = study  # usability study log (``--study``), None otherwise
         self.setWindowTitle(self.t["title"])
@@ -509,7 +519,7 @@ class MainWindow(QMainWindow):
     def _settings_tab(self) -> QWidget:
         tab = QWidget()
         form = QFormLayout(tab)
-        self.ws_label = QLabel(self.workspace or self.t["ws_none"])
+        self.ws_label = QLabel(self._workspace_text(self.workspace))
         self.ws_label.setWordWrap(True)
         self.ws_btn = QPushButton(self.t["choose_folder"])
         self.ws_btn.setMinimumHeight(44)
@@ -549,6 +559,12 @@ class MainWindow(QMainWindow):
         self.contrast_box.toggled.connect(lambda _on: self.save_preferences())
         self.palette_box.currentIndexChanged.connect(lambda _i: self.save_preferences())
         return tab
+
+    def _workspace_text(self, path: str | None) -> str:
+        if not path:
+            return self.t["ws_none"]
+        local = self.local_workspace
+        return self.t["ws_local"].format(path=path) if local and Path(path) == Path(local) else path
 
     def save_preferences(self) -> None:
         self.prefs.setValue("text_scale", a11y.TEXT_SCALES[self.text_size.currentIndex()])
@@ -654,6 +670,12 @@ class MainWindow(QMainWindow):
             if not path:
                 return False
         problem = workspace_problem(path)
+        if problem and self.seed is not None and not (Path(path) / "models" / "registry.json").exists():
+            version = seed_version(self.seed)
+            answer = QMessageBox.question(self, self.t["ws_folder"], self.t["ws_seed_ask"].format(version=version))
+            if answer == QMessageBox.StandardButton.Yes:
+                improve.seed_workspace(path, self.seed)
+                problem = workspace_problem(path)
         if problem:
             self.ws_msg.setText(f"{self.t['ws_invalid']}\n({problem})")
             return False
@@ -664,7 +686,7 @@ class MainWindow(QMainWindow):
             return False
         self.client, self.workspace = client, path
         settings().setValue("workspace", path)
-        self.ws_label.setText(path)
+        self.ws_label.setText(self._workspace_text(path))
         self.ws_msg.setText(self.t["ws_applied"].format(path=path))
         self._show_model(client.model())
         self.result = None
@@ -865,6 +887,31 @@ def stop_local_server(url: str) -> None:
         server.should_exit = True
 
 
+def seed_dir() -> Path | None:
+    """Workspace seed shipped with the app (model, dataset manifest, synthetic spec), if any:
+    ``$RAUSNET_SEED``, ``workspace_seed`` next to the frozen exe, or ``release/workspace`` in the source tree."""
+    if os.environ.get("RAUSNET_SEED"):
+        candidates = [Path(os.environ["RAUSNET_SEED"])]
+    elif getattr(sys, "frozen", False):
+        candidates = [Path(sys.executable).resolve().parent / "workspace_seed"]
+    else:
+        candidates = [Path(__file__).resolve().parents[3] / "release" / "workspace"]
+    return next((c for c in candidates if (c / "models" / "registry.json").exists()), None)
+
+
+def seed_version(seed: Path) -> str:
+    from rausnet.registry import Registry
+
+    cur = Registry(seed / "models").current()
+    return cur.version if cur else "?"
+
+
+def default_workspace() -> str:
+    """This user's local workspace (used until a shared folder is chosen in Ajustes)."""
+    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+    return str(Path(base) / "workspace")
+
+
 def connect_workspace(workspace: str, previous_url: list[str]) -> ApiClient:
     """Start a local API on ``workspace`` and stop the previous one (``previous_url`` is updated)."""
     ws = Path(workspace)
@@ -878,7 +925,8 @@ def connect_workspace(workspace: str, previous_url: list[str]) -> ApiClient:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="RAUSNet desktop application.")
     parser.add_argument("--server", default=None, help="API URL; default: start a local one")
-    parser.add_argument("--models-dir", default="models")
+    parser.add_argument("--models-dir", default=None,
+                        help="serve this registry instead of a workspace (default: local workspace from the seed)")
     parser.add_argument("--data-dir", default=os.environ.get("RAUSNET_DATA_DIR"))
     parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
                         help="shared workspace (global model + corrections); overrides the two folders above")
@@ -900,18 +948,26 @@ def main(argv=None) -> None:
     if args.server:
         window = MainWindow(ApiClient(args.server), args.lang, study=study)
     else:
-        workspace = args.workspace or settings().value("workspace") or None
+        seed = seed_dir()
+        workspace = args.workspace or (None if args.models_dir else settings().value("workspace")) or None
         if workspace and not args.workspace and workspace_problem(workspace):
-            print(f"remembered workspace {workspace} is not usable; using {args.models_dir}", file=sys.stderr)
+            print(f"remembered workspace {workspace} is not usable", file=sys.stderr)
             workspace = None
+        local = None
+        if not workspace and not args.models_dir and seed is not None:
+            # first start (or no shared folder yet): a local workspace made from the bundled seed, so
+            # analysing, correcting, the improvement panel and the version history all work at once
+            local = default_workspace()
+            improve.seed_workspace(local, seed)
+            workspace = local
         current: list[str] = []
         if workspace:
             client = connect_workspace(workspace, current)
         else:
-            current.append(start_local_server(args.models_dir, args.data_dir))
+            current.append(start_local_server(args.models_dir or "models", args.data_dir))
             client = ApiClient(current[0])
         window = MainWindow(client, args.lang, connect=lambda ws: connect_workspace(ws, current),
-                            workspace=workspace, study=study)
+                            workspace=workspace, study=study, seed=seed, local_workspace=local)
     window.show()
     sys.exit(app.exec())
 

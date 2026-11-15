@@ -4,8 +4,10 @@ Extra behaviour, only relevant to the frozen Windows build:
 
 * Windowed builds have ``sys.stdout``/``sys.stderr`` set to ``None``; uvicorn's log
   formatter calls ``isatty()`` on them, so they are redirected to ``os.devnull``.
-* If neither ``--models-dir`` nor ``--server`` is given, the registry is looked up
-  in ``./models`` (current directory) and then in ``models`` next to the executable.
+* The release ships ``workspace_seed/`` next to the executable: on first start the app makes a
+  local workspace from it (``rausnet.ui.app.seed_dir``). Only if an old-style ``models`` folder
+  exists (``./models`` or next to the executable) and no ``--models-dir``/``--server``/``--workspace``
+  is given, that registry is served instead, as in earlier builds.
 * ``--self-test`` imports the GUI, ONNX Runtime and API stacks (and, if a registry is
   found, loads the current model and starts the local API), then exits with code 0
   on success or 1 on failure without opening a window. Used by the build script.
@@ -40,11 +42,13 @@ def _fix_std_streams() -> None:
 
 
 def _with_default_models(argv: list[str]) -> list[str]:
-    if any(a == "--server" or a.startswith("--server=") for a in argv):
-        return argv
-    if any(a == "--models-dir" or a.startswith("--models-dir=") for a in argv):
-        return argv
-    return [*argv, "--models-dir", str(_default_models_dir())]
+    for flag in ("--server", "--models-dir", "--workspace"):
+        if any(a == flag or a.startswith(flag + "=") for a in argv):
+            return argv
+    legacy = _default_models_dir()
+    if (legacy / "registry.json").exists():
+        return [*argv, "--models-dir", str(legacy)]
+    return argv  # the app uses the bundled workspace seed
 
 
 def self_test(argv: list[str]) -> int:
@@ -56,15 +60,28 @@ def self_test(argv: list[str]) -> int:
     from rausnet.ui import app
 
     print(f"imports ok: onnxruntime {onnxruntime.__version__}, providers {onnxruntime.get_available_providers()}")
+    from rausnet.ui.client import ApiClient
+
     argv = _with_default_models(argv)
     models_dir = Path(argv[argv.index("--models-dir") + 1]) if "--models-dir" in argv else None
+    seed = app.seed_dir()
     if models_dir is not None and (models_dir / "registry.json").exists():
         url = app.start_local_server(str(models_dir))
-        from rausnet.ui.client import ApiClient
-
         print(f"local API ok at {url}: {ApiClient(url).health()}")
+    elif seed is not None:
+        import tempfile
+
+        from rausnet import improve
+
+        ws = Path(tempfile.mkdtemp(prefix="rausnet_selftest_")) / "workspace"
+        improve.seed_workspace(ws, seed)
+        url = app.start_local_server(str(ws / "models"), str(ws / "data"), workspace=str(ws))
+        client = ApiClient(url)
+        st = client.workspace_status()
+        print(f"workspace seed ok ({seed.name}): {client.health()}, pending {st['pending_images']}, "
+              f"versions {[v['version'] for v in client.model_versions()['versions']]}")
     else:
-        print(f"no registry found at {models_dir}; model loading not tested")
+        print("no registry or workspace seed found; model loading not tested")
     return 0
 
 
@@ -94,7 +111,8 @@ def main() -> None:
 
             _qt = QApplication.instance() or QApplication(sys.argv[:1])
             QMessageBox.critical(None, "RAUSNet", f"RAUSNet could not start:\n\n{exc}\n\n"
-                                 f"Expected a model registry (registry.json) in:\n{_default_models_dir()}")
+                                 f"Expected the folder 'workspace_seed' next to RAUSNet.exe "
+                                 f"(or a model registry in {_default_models_dir()}).")
         except Exception:
             pass
         sys.exit(1)
