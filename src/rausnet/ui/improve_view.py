@@ -246,6 +246,7 @@ class ImproveView(QWidget):
         self.open_url = open_url or (lambda url: QDesktopServices.openUrl(QUrl(url)))
         self.last: dict | None = None
         self.admin = False
+        self.goal: Callable[[str], object] = lambda _name: None  # usability study hook (see ui.study)
         self.runner = runner or LocalImprover(self)
         self.runner.progress.connect(self._on_progress)
         self.runner.finished.connect(self._on_finished)
@@ -433,6 +434,7 @@ class ImproveView(QWidget):
             return None
         url = colab_url(branch=self.branch)
         self.open_url(url)
+        self.goal("colab_opened")
         return url
 
     # ---- local improvement
@@ -474,6 +476,7 @@ class ImproveView(QWidget):
         self._update_local()
         if started:
             self.cancel_btn.setFocus()
+            self.goal("local_started")
         return started
 
     def cancel_local(self, confirm: bool = True) -> None:
@@ -559,4 +562,5 @@ class ImproveView(QWidget):
         announce(self.run_text, text)
         self.model_switched.emit(res)
         self.refresh()
+        self.goal("rolled_back")
         return res

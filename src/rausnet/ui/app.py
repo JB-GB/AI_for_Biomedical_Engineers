@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
+from PySide6.QtCore import QByteArray, QSettings, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -55,10 +55,12 @@ from rausnet.ui.client import ApiClient, ApiError
 from rausnet.ui.improve_view import STRINGS as IMPROVE_STRINGS
 from rausnet.ui.improve_view import ImproveView
 from rausnet.ui.report import report_html, write_pdf
+from rausnet.ui.study import StudyLog
 
 STRINGS = {
     "es": {
         "title": "RAUSNet — Graduación de sinovitis por ultrasonido",
+        "study_on": "estudio de usabilidad {code}: se registran las acciones",
         "banner_unvalidated": "MODELO NO VALIDADO CLÍNICAMENTE — solo investigación, no usar para diagnóstico",
         "banner_validated": "Modelo validado para investigación clínica",
         "model": "Modelo {version} · etapa {stage}",
@@ -102,6 +104,7 @@ STRINGS = {
     },
     "en": {
         "title": "RAUSNet — Ultrasound synovitis grading",
+        "study_on": "usability study {code}: actions are logged",
         "banner_unvalidated": "MODEL NOT CLINICALLY VALIDATED — research use only, not for diagnosis",
         "banner_validated": "Model validated for clinical research",
         "model": "Model {version} · stage {stage}",
@@ -285,9 +288,11 @@ class MainWindow(QMainWindow):
     (external server) the workspace is configured on the server."""
 
     def __init__(self, client: ApiClient, lang: str = "es",
-                 connect: Callable[[str], ApiClient] | None = None, workspace: str | None = None):
+                 connect: Callable[[str], ApiClient] | None = None, workspace: str | None = None,
+                 study: StudyLog | None = None):
         super().__init__()
         self.client, self.t, self.connect, self.workspace = client, STRINGS[lang], connect, workspace
+        self.study = study  # usability study log (``--study``), None otherwise
         self.setWindowTitle(self.t["title"])
         info = client.model()
 
@@ -455,6 +460,7 @@ class MainWindow(QMainWindow):
         self.improve_view = ImproveView(client, self.t)
         self.improve_view.status_changed.connect(self._on_status)
         self.improve_view.model_switched.connect(lambda res: self._model_changed(res["served_version"]))
+        self.improve_view.goal = self._goal
         self.tabs = QTabWidget()
         # each tab scrolls vertically: the window fits small laptop screens at every text size
         self.tabs.addTab(_scrolling(analyze_tab), self.t["tab_analyze"])
@@ -478,7 +484,11 @@ class MainWindow(QMainWindow):
                              (("Ctrl+Z",), self.undo),
                              (("F1",), self.show_help)):
             for key in keys:
-                QShortcut(QKeySequence(key), self, activated=lambda a=action: a())
+                QShortcut(QKeySequence(key), self, activated=lambda a=action, k=key: self._shortcut(k, a))
+        if self.study is not None:
+            QShortcut(QKeySequence("Ctrl+Shift+N"), self, activated=self.study.mark)
+            note = self.t["study_on"].format(code=self.study.participant)
+            self.setWindowTitle(f"{self.windowTitle()} · {note}")
         chain = [self.gs_panel.button, self.pd_panel.button, self.analyze_btn, self.result_summary,
                  self.heatmap_box, self.export_btn, self.patient, self.joint, self.side,
                  *self.gs_fix.buttons(), *self.pd_fix.buttons(), self.submit_btn, self.undo_btn, self.today_list]
@@ -613,7 +623,17 @@ class MainWindow(QMainWindow):
             return None
         self._model_changed(res["version"])
         self.improve_view.refresh()
+        self._goal("model_adopted")
         return res
+
+    def _goal(self, name: str) -> None:
+        if self.study is not None:
+            self.study.goal(name)
+
+    def _shortcut(self, keys: str, action) -> None:
+        if self.study is not None:
+            self.study.shortcut(keys)
+        action()
 
     def _model_changed(self, version: str) -> None:
         self._show_model(self.client.model())
@@ -699,6 +719,7 @@ class MainWindow(QMainWindow):
         self.result_summary.setAccessibleDescription(spoken)
         self.result_summary.setFocus(Qt.FocusReason.OtherFocusReason)
         a11y.announce(self.result_summary, spoken)
+        self._goal("analyzed")
         return res
 
     def export_pdf(self, path: str | None = None) -> Path | None:
@@ -716,6 +737,7 @@ class MainWindow(QMainWindow):
             self._error(exc)
             return None
         self.status.setText(self.t["pdf_saved"].format(path=out))
+        self._goal("pdf_exported")
         return out
 
     def toggle_heatmap(self, on: bool) -> None:
@@ -761,6 +783,7 @@ class MainWindow(QMainWindow):
         self._tell(self.t["sent_confirm"] if confirm else self.t["sent_fix"].format(
             gs=a11y.grade_text(label["gs"], self.t), pd=a11y.grade_text(label["pd"], self.t)))
         self._show_cases()
+        self._goal("correction_sent")
         return res
 
     def undo(self) -> dict | None:
@@ -779,6 +802,7 @@ class MainWindow(QMainWindow):
         self.submit_btn.setEnabled(True)
         self._tell(self.t["undone"])
         self._show_cases()
+        self._goal("undone")
         return res
 
     def check_inputs(self) -> list[dict]:
@@ -859,12 +883,22 @@ def main(argv=None) -> None:
     parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
                         help="shared workspace (global model + corrections); overrides the two folders above")
     parser.add_argument("--lang", default="es", choices=sorted(STRINGS))
+    parser.add_argument("--study", default=None, metavar="P01",
+                        help="usability study: log actions (no file names or typed text) for this participant code")
+    parser.add_argument("--study-dir", default=None, help="folder for study logs (default: local app data/study)")
     args = parser.parse_args(argv)
     app = QApplication(sys.argv[:1])
     app.setOrganizationName("RAUSNet")
     app.setApplicationName("desktop")
+    study = None
+    if args.study:
+        folder = args.study_dir or str(Path(QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.AppLocalDataLocation)) / "study")
+        study = StudyLog(folder, args.study)
+        app.installEventFilter(study)
+        print(f"study log: {study.path}", file=sys.stderr)
     if args.server:
-        window = MainWindow(ApiClient(args.server), args.lang)
+        window = MainWindow(ApiClient(args.server), args.lang, study=study)
     else:
         workspace = args.workspace or settings().value("workspace") or None
         if workspace and not args.workspace and workspace_problem(workspace):
@@ -877,7 +911,7 @@ def main(argv=None) -> None:
             current.append(start_local_server(args.models_dir, args.data_dir))
             client = ApiClient(current[0])
         window = MainWindow(client, args.lang, connect=lambda ws: connect_workspace(ws, current),
-                            workspace=workspace)
+                            workspace=workspace, study=study)
     window.show()
     sys.exit(app.exec())
 
