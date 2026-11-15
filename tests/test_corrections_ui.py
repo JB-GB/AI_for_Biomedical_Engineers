@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -59,11 +59,13 @@ def test_correction_in_three_clicks_with_undo(setup):
     ai_gs, ai_pd = res["gs"]["grade"], res["pd"]["grade"]
     new_gs, new_pd = (ai_gs + 1) % 4, (ai_pd + 2) % 4 if (ai_gs + 1) % 4 else 0  # PD > 0 needs GS > 0
     w.resize(1180, 900)
-    w.show()  # real clicks need laid-out widgets
-    QApplication.processEvents()
+    w.show()  # real clicks need an exposed, laid-out window
+    assert QTest.qWaitForWindowExposed(w)
     clicks = [w.gs_fix.group.button(new_gs), w.pd_fix.group.button(new_pd), w.submit_btn]
-    for b in clicks:  # real mouse clicks: 3 in total
-        QTest.mouseClick(b, Qt.MouseButton.LeftButton)
+    for b in clicks:  # real mouse clicks: 3 in total; radios are clicked on their indicator
+        pos = QPoint(10, b.height() // 2) if b is not w.submit_btn else b.rect().center()
+        QTest.mouseClick(b, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, pos)
+    assert (w.gs_fix.currentIndex(), w.pd_fix.currentIndex()) == (new_gs, new_pd)
     recs = _stored(data)
     assert [(r.patient_id, r.gs_grade, r.pd_grade) for r in recs] == [("HOSP-0042", new_gs, new_pd)]
     assert w.status.text().startswith("Corrección guardada") and w.undo_btn.isEnabled()
