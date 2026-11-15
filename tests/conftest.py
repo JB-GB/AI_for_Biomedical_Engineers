@@ -46,3 +46,9 @@ def isolated_qt_settings(tmp_path_factory):
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path_factory.mktemp("qt")))
     yield
+
+
+@pytest.fixture(autouse=True)
+def isolated_cases_file(tmp_path, monkeypatch):
+    """Today's cases of the desktop app go to the test's temporary folder."""
+    monkeypatch.setenv("RAUSNET_CASES_FILE", str(tmp_path / "cases_today.json"))

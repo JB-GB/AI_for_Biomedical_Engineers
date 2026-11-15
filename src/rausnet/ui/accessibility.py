@@ -38,8 +38,10 @@ STRINGS = {
         "help_title": "Ayuda y atajos de teclado",
         "help_text": ("1. Arrastra las imágenes GS y PD a la ventana (o Ctrl+O).\n"
                       "2. Pulsa Analizar (Ctrl+Intro). El resultado se lee en voz alta.\n"
-                      "3. Exporta el informe PDF (Ctrl+P) o corrige el grado (Ctrl+K).\n\n"
+                      "3. Exporta el informe PDF (Ctrl+P) o corrige el grado (Ctrl+K): un clic por grado "
+                      "y Enviar. Ctrl+Z deshace el último envío.\n\n"
                       "Ctrl+O abrir imágenes · Ctrl+Intro analizar · Ctrl+P PDF · Ctrl+K corregir · "
+                      "Ctrl+Z deshacer · "
                       "F1 esta ayuda · Tab / Mayús+Tab moverse entre controles."),
         "help_hint": "F1: ayuda y atajos de teclado",
         "open_images": "Abrir imágenes GS y PD",
@@ -68,8 +70,10 @@ STRINGS = {
         "help_title": "Help and keyboard shortcuts",
         "help_text": ("1. Drop the GS and PD images on the window (or Ctrl+O).\n"
                       "2. Press Analyze (Ctrl+Enter). The result is read aloud.\n"
-                      "3. Export the PDF report (Ctrl+P) or correct the grade (Ctrl+K).\n\n"
+                      "3. Export the PDF report (Ctrl+P) or correct the grade (Ctrl+K): one click per "
+                      "grade and Send. Ctrl+Z undoes the last one.\n\n"
                       "Ctrl+O open images · Ctrl+Enter analyze · Ctrl+P PDF · Ctrl+K correct · "
+                      "Ctrl+Z undo · "
                       "F1 this help · Tab / Shift+Tab move between controls."),
         "help_hint": "F1: help and keyboard shortcuts",
         "open_images": "Open GS and PD images",

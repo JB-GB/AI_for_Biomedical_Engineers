@@ -123,7 +123,7 @@ def test_keyboard_only_check_of_one_case(window, pair, monkeypatch):
     assert summary.startswith("Grado combinado ") and window.result_summary.accessibleDescription() == summary
     assert window.focusWidget() is window.result_summary  # focus moves to the spoken result
     shortcuts["Ctrl+K"].activated.emit()
-    assert window.focusWidget() is window.gs_fix
+    assert window.focusWidget() is window.gs_fix.group.checkedButton()  # predicted GS grade
     shown = []
     monkeypatch.setattr(QMessageBox, "information", lambda _p, title, text: shown.append(title))
     shortcuts["F1"].activated.emit()

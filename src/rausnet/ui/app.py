@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from rausnet.ui import accessibility as a11y
+from rausnet.ui import corrections as corr
 from rausnet.ui.client import ApiClient, ApiError
 from rausnet.ui.improve_view import STRINGS as IMPROVE_STRINGS
 from rausnet.ui.improve_view import ImproveView
@@ -163,6 +165,7 @@ for _lang, _table in STRINGS.items():
     _table.update(IMPROVE_STRINGS[_lang])
     _table.update(SETTINGS_STRINGS[_lang])
     _table.update(a11y.STRINGS[_lang])
+    _table.update(corr.STRINGS[_lang])
     _table["no_image"] = _table["drop_hint"]
 
 PREVIEW = 260
@@ -197,6 +200,7 @@ class ImagePanel(QGroupBox):
     def __init__(self, title: str, t: dict, on_files: Callable[[list[str]], object] | None = None):
         super().__init__(title)
         self.t, self.path, self.on_files = t, None, on_files
+        self.on_change: Callable[[], object] | None = None
         self.original: QPixmap | None = None
         self.heatmap: QPixmap | None = None
         self.view = QLabel(t["no_image"])
@@ -245,6 +249,8 @@ class ImagePanel(QGroupBox):
         else:
             self.view.setText(self.t["no_image"])
             self.view.setAccessibleDescription("")
+        if self.on_change:
+            self.on_change()
 
     def set_heatmap(self, data_url: str | None) -> None:
         """Store a Grad-CAM overlay received from the API as a base64 PNG data URL."""
@@ -359,43 +365,68 @@ class MainWindow(QMainWindow):
         form.addRow(self.warnings)
 
         # Correction panel
-        corr = QGroupBox(self.t["correction"])
-        cform = QFormLayout(corr)
+        corr_box = QGroupBox(self.t["correction"])
+        cform = QFormLayout(corr_box)
         self.patient = QLineEdit()
         self.patient.setPlaceholderText("HOSP-0001")
         self.joint = QComboBox()
         self.joint.addItems(info.get("joints", ["MCP2", "MCP3", "WRIST"]))
         self.side = QComboBox()
         self.side.addItems(["L", "R"])
-        self.gs_fix = QComboBox()
-        self.pd_fix = QComboBox()
-        for box in (self.gs_fix, self.pd_fix):
-            box.addItems([a11y.grade_text(g, self.t) for g in range(4)])
+        self.gs_fix = corr.GradeSelector(f"{self.t['correction']}: {self.t['gs_grade']}", self.t)
+        self.pd_fix = corr.GradeSelector(f"{self.t['correction']}: {self.t['pd_grade']}", self.t)
+        for sel in (self.gs_fix, self.pd_fix):
+            sel.changed.connect(lambda _g: self.submit_btn.setEnabled(True))
         self.submit_btn = QPushButton(self.t["submit"])
         self.submit_btn.setMinimumHeight(44)
-        self.submit_btn.clicked.connect(self.submit)
+        self.submit_btn.clicked.connect(lambda: self.submit())
+        self.undo_btn = QPushButton(f"{self.t['undo']}  ({self.t['sc_undo']})")
+        self.undo_btn.setAccessibleName(self.t["undo"])
+        self.undo_btn.setMinimumHeight(44)
+        self.undo_btn.setEnabled(False)
+        self.undo_btn.clicked.connect(lambda: self.undo())
         self.status = QLabel("")
         self.status.setWordWrap(True)
         for label, widget in ((self.t["patient"], self.patient), (self.t["joint"], self.joint),
-                              (self.t["side"], self.side), (self.t["gs_grade"], self.gs_fix),
-                              (self.t["pd_grade"], self.pd_fix)):
+                              (self.t["side"], self.side)):
             widget.setAccessibleName(label)
             widget.setMinimumHeight(44)
             cform.addRow(label, widget)
-        self.gs_fix.setAccessibleName(f"{self.t['correction']}: {self.t['gs_grade']}")
-        self.pd_fix.setAccessibleName(f"{self.t['correction']}: {self.t['pd_grade']}")
-        cform.addRow(self.submit_btn)
+        cform.addRow(self.t["gs_grade"], self.gs_fix)
+        cform.addRow(self.t["pd_grade"], self.pd_fix)
+        send = QHBoxLayout()
+        send.addWidget(self.submit_btn, 2)
+        send.addWidget(self.undo_btn, 1)
+        cform.addRow(send)
         cform.addRow(self.status)
+
+        # today's cases (this computer only, cleared daily) and checks of the loaded images
+        self.cases = corr.TodayCases()
+        self.case_index: int | None = None
+        self.last_correction: tuple[str, int] | None = None
+        self.today_box = QGroupBox(self.t["today"])
+        self.today_list = QListWidget()
+        self.today_list.setAccessibleName(self.t["today"])
+        self.today_list.setMinimumHeight(120)
+        QVBoxLayout(self.today_box).addWidget(self.today_list)
+        self.input_note = QLabel("")
+        self.input_note.setObjectName("warnings")
+        self.input_note.setWordWrap(True)
+        self.input_issues: list[dict] = []
+        self.gs_panel.on_change = self.check_inputs
+        self.pd_panel.on_change = self.check_inputs
+        self._show_cases()
 
         right = QVBoxLayout()
         right.addWidget(result)
-        right.addWidget(corr)
+        right.addWidget(corr_box)
         left = QVBoxLayout()
         left.addLayout(images)
+        left.addWidget(self.input_note)
         left.addWidget(self.analyze_btn)
         left.addWidget(self.heatmap_box)
         left.addWidget(self.export_btn)
-        left.addStretch()
+        left.addWidget(self.today_box, 1)
         body = QHBoxLayout()
         body.addLayout(left)
         body.addLayout(right)
@@ -423,12 +454,13 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(hint)
         for keys, action in ((("Ctrl+Return", "Ctrl+Enter"), self.analyze), (("Ctrl+O",), self.open_images),
                              (("Ctrl+P",), self.export_pdf), (("Ctrl+K",), self.focus_correction),
+                             (("Ctrl+Z",), self.undo),
                              (("F1",), self.show_help)):
             for key in keys:
                 QShortcut(QKeySequence(key), self, activated=lambda a=action: a())
         chain = [self.gs_panel.button, self.pd_panel.button, self.analyze_btn, self.result_summary,
-                 self.heatmap_box, self.export_btn, self.patient, self.joint, self.side, self.gs_fix,
-                 self.pd_fix, self.submit_btn]
+                 self.heatmap_box, self.export_btn, self.patient, self.joint, self.side,
+                 *self.gs_fix.buttons(), *self.pd_fix.buttons(), self.submit_btn, self.undo_btn, self.today_list]
         for a, b in itertools.pairwise(chain):
             QWidget.setTabOrder(a, b)
         self.tab_chain = chain
@@ -525,7 +557,7 @@ class MainWindow(QMainWindow):
 
     def focus_correction(self) -> None:
         self.tabs.setCurrentIndex(0)
-        self.gs_fix.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.gs_fix.focus()
 
     def show_help(self) -> None:
         QMessageBox.information(self, self.t["help_title"], self.t["help_text"])
@@ -591,6 +623,8 @@ class MainWindow(QMainWindow):
         if not self.gs_panel.path:
             QMessageBox.information(self, self.t["title"], self.t["need_gs"])
             return None
+        if self._blocked():
+            return None
         try:
             res = self.client.predict(self.gs_panel.path, self.pd_panel.path, explain=True,
                                       palette=self.palette_name)
@@ -617,6 +651,13 @@ class MainWindow(QMainWindow):
         self.toggle_heatmap(self.heatmap_box.isChecked())
         self.gs_fix.setCurrentIndex(res["gs"]["grade"])
         self.pd_fix.setCurrentIndex(res["pd"]["grade"] if self.pd_panel.path else 0)
+        ai = {"gs": res["gs"]["grade"], "pd": res["pd"]["grade"] if self.pd_panel.path else 0,
+              "combined": c["grade"]}
+        self.result["ai"] = ai
+        self.case_index = self.cases.add(self.patient.text().strip(), self.joint.currentText(),
+                                         self.side.currentText(), ai)
+        self.submit_btn.setEnabled(True)
+        self._show_cases()
         spoken = a11y.spoken_result(res, self.t)
         self.result_summary.setText(spoken)
         self.result_summary.setAccessibleDescription(spoken)
@@ -646,20 +687,84 @@ class MainWindow(QMainWindow):
         self.pd_panel.show_heatmap(on)
 
     def submit(self) -> dict | None:
+        """Send the selected grades for the loaded images (3 clicks: GS grade, PD grade, send)."""
         if not self.gs_panel.path:
             QMessageBox.information(self, self.t["title"], self.t["need_gs"])
             return None
+        if self._blocked():
+            return None
+        same_case = bool(self.result) and (self.result["gs"], self.result["pd"]) == \
+            (self.gs_panel.path, self.pd_panel.path) and self.case_index is not None
+        patient = self.patient.text().strip()
+        if not corr.PSEUDONYM.match(patient):
+            self._tell(self.t["need_patient"])
+            self.patient.setFocus()
+            return None
+        label = {"gs": self.gs_fix.currentIndex(), "pd": self.pd_fix.currentIndex()}
         try:
             res = self.client.correct(
-                self.gs_panel.path, self.pd_panel.path, patient_id=self.patient.text().strip(),
+                self.gs_panel.path, self.pd_panel.path, patient_id=patient,
                 joint=self.joint.currentText(), side=self.side.currentText(),
-                gs_grade=self.gs_fix.currentIndex(), pd_grade=self.pd_fix.currentIndex(),
+                gs_grade=label["gs"], pd_grade=label["pd"],
             )
+            previous = self.cases.cases[self.case_index]["image_id"] if same_case else None
+            if previous:  # sent again after changing a grade: the new label replaces the old one
+                self.client.undo_correction(previous)
         except (ApiError, OSError) as exc:
             self._error(exc)
             return None
-        self._tell(self.t["sent"].format(image_id=res["image_id"]))
+        if not same_case:
+            self.case_index = self.cases.add(patient, self.joint.currentText(), self.side.currentText(), None)
+        self.cases.update(self.case_index, label=label, image_id=res["image_id"], patient=patient,
+                          joint=self.joint.currentText(), side=self.side.currentText())
+        self.last_correction = (res["image_id"], self.case_index)
+        self.undo_btn.setEnabled(True)
+        self.submit_btn.setEnabled(False)  # no duplicate: changing a grade enables it again
+        ai = self.cases.cases[self.case_index]["ai"]
+        confirm = ai is not None and label == {"gs": ai["gs"], "pd": ai["pd"]}
+        self._tell(self.t["sent_confirm"] if confirm else self.t["sent_fix"].format(
+            gs=a11y.grade_text(label["gs"], self.t), pd=a11y.grade_text(label["pd"], self.t)))
+        self._show_cases()
         return res
+
+    def undo(self) -> dict | None:
+        """Withdraw the last correction sent from this window (until a model is trained with it)."""
+        if not self.last_correction:
+            return None
+        image_id, index = self.last_correction
+        try:
+            res = self.client.undo_correction(image_id)
+        except ApiError as exc:
+            self._error(exc)
+            return None
+        self.cases.update(index, label=None, image_id=None)
+        self.last_correction = None
+        self.undo_btn.setEnabled(False)
+        self.submit_btn.setEnabled(True)
+        self._tell(self.t["undone"])
+        self._show_cases()
+        return res
+
+    def check_inputs(self) -> list[dict]:
+        """Size and modality checks of the loaded images, shown under them and read aloud."""
+        self.input_issues = corr.check_inputs(self.gs_panel.path, self.pd_panel.path, self.t)
+        text = "\n".join(("✖ " if i["block"] else "⚠ ") + i["text"] for i in self.input_issues)
+        self.input_note.setText(text)
+        if text:
+            a11y.announce(self.input_note, text)
+        self.submit_btn.setEnabled(True)
+        return self.input_issues
+
+    def _blocked(self) -> bool:
+        blocking = [i["text"] for i in self.input_issues if i["block"]]
+        if blocking:
+            self._tell(blocking[0])
+        return bool(blocking)
+
+    def _show_cases(self) -> None:
+        self.today_list.clear()
+        self.today_list.addItems(self.cases.lines(self.t))
+        self.today_box.setTitle(self.t["today_title"].format(n=len(self.cases.cases), k=self.cases.corrected()))
 
 
 def _free_port() -> int:
@@ -720,6 +825,8 @@ def main(argv=None) -> None:
     parser.add_argument("--lang", default="es", choices=sorted(STRINGS))
     args = parser.parse_args(argv)
     app = QApplication(sys.argv[:1])
+    app.setOrganizationName("RAUSNet")
+    app.setApplicationName("desktop")
     if args.server:
         window = MainWindow(ApiClient(args.server), args.lang)
     else:
