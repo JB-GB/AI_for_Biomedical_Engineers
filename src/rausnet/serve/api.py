@@ -17,6 +17,8 @@ Endpoints:
     GET  /workspace/status  shared workspace: global model, images waiting, run in progress, history
                        (``--workspace`` only) plus the version this API serves
     POST /model/reload switch to the registry's current model if it changed (between requests)
+    GET  /model/versions   registered versions of the global model, newest first (``--workspace``)
+    POST /model/rollback   JSON {version, reason}: serve an archived version again, logged (``--workspace``)
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, Field
 
 from rausnet import improve
 from rausnet.data.manifest import FIELDNAMES, Record
@@ -44,6 +47,11 @@ from rausnet.serve.inference import Predictor
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 PSEUDONYM = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 CORRECTION_ID = re.compile(r"^corr-[0-9a-f]{12}$")
+
+
+class RollbackRequest(BaseModel):
+    version: str = Field(pattern=r"^v[0-9]{4}$")
+    reason: str = Field("", max_length=200)
 
 
 def _ids_in(manifest: Path) -> set[str]:
@@ -97,23 +105,55 @@ def create_app(model_dir: str | Path, data_dir: str | Path | None = None, models
     def model_info():
         return state["predictor"].info
 
+    def _swap_to_current() -> bool:
+        """Load the registry's current model and switch to it; the caller holds ``swap``."""
+        try:
+            folder = resolve_model_dir(models_dir).resolve()
+        except FileNotFoundError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if folder == state["dir"]:
+            return False
+        try:
+            predictor = Predictor(folder)  # load fully before switching: never a half model
+        except Exception as exc:  # keep serving the previous model
+            raise HTTPException(409, f"new model could not be loaded: {exc}") from exc
+        state.update(predictor=predictor, dir=folder)
+        return True
+
     @app.post("/model/reload")
     def reload_model():
         if models_dir is None:
             raise HTTPException(503, "reload is disabled: the API serves a fixed --model-dir")
         with swap:
-            try:
-                folder = resolve_model_dir(models_dir).resolve()
-            except FileNotFoundError as exc:
-                raise HTTPException(409, str(exc)) from exc
-            changed = folder != state["dir"]
-            if changed:
-                try:
-                    predictor = Predictor(folder)  # load fully before switching: never a half model
-                except Exception as exc:  # keep serving the previous model
-                    raise HTTPException(409, f"new model could not be loaded: {exc}") from exc
-                state.update(predictor=predictor, dir=folder)
+            changed = _swap_to_current()
         return {"changed": changed, "version": state["predictor"].info["version"]}
+
+    @app.get("/model/versions")
+    def model_versions():
+        if workspace is None:
+            raise HTTPException(503, "no shared workspace: start the API with --workspace")
+        return {"served_version": state["predictor"].info["version"], "versions": improve.versions(workspace)}
+
+    @app.post("/model/rollback")
+    def model_rollback(req: RollbackRequest):
+        if workspace is None or models_dir is None:
+            raise HTTPException(503, "no shared workspace: start the API with --workspace")
+        with swap:
+            reg = Registry(models_dir)
+            try:
+                folder = (reg.dir / reg.get(req.version).model_path).parent.resolve()
+            except KeyError as exc:
+                raise HTTPException(404, f"unknown version {req.version}") from exc
+            try:  # load before the registry changes: a broken old version changes nothing
+                predictor = Predictor(folder)
+            except Exception as exc:
+                raise HTTPException(409, f"{req.version} could not be loaded: {exc}") from exc
+            try:
+                entry = improve.rollback(workspace, req.version, req.reason)
+            except (ValueError, improve.WorkspaceLocked) as exc:
+                raise HTTPException(409, str(exc)) from exc
+            state.update(predictor=predictor, dir=folder)
+        return {**entry, "served_version": state["predictor"].info["version"]}
 
     @app.get("/workspace/status")
     def workspace_status():

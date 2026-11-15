@@ -57,3 +57,9 @@ class ApiClient:
 
     def reload_model(self) -> dict:
         return self._check(self.http.post("/model/reload"))
+
+    def model_versions(self) -> dict:
+        return self._check(self.http.get("/model/versions"))
+
+    def rollback(self, version: str, reason: str = "") -> dict:
+        return self._check(self.http.post("/model/rollback", json={"version": version, "reason": reason}))
