@@ -5,7 +5,7 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient
 
-from rausnet.data.manifest import read_manifest
+from rausnet.data.manifest import read_manifest, write_manifest
 from rausnet.serve.api import create_app
 
 
@@ -55,6 +55,25 @@ def test_correction_stored_and_valid(client, synth_small):
     assert (manifest.parent / recs[0].gs_path).exists() and (manifest.parent / recs[0].pd_path).exists()
     c.post("/corrections", files=files(synth_small), data=form)
     assert len(read_manifest(manifest)) == 2
+
+
+def test_correction_undo(client, synth_small):
+    c, data = client
+    form = {"patient_id": "HOSP-0001", "joint": "MCP2", "side": "L", "gs_grade": "2", "pd_grade": "1"}
+    first, second = (c.post("/corrections", files=files(synth_small), data=form).json() for _ in range(2))
+    manifest = data / first["manifest"]
+    gs_file = manifest.parent / read_manifest(manifest)[0].gs_path
+    assert c.delete(f"/corrections/{first['image_id']}").json() == {"removed": first["image_id"]}
+    assert [r.image_id for r in read_manifest(manifest)] == [second["image_id"]] and not gs_file.exists()
+    assert c.delete(f"/corrections/{first['image_id']}").status_code == 404
+    assert c.delete("/corrections/..%2F..%2Fsecret").status_code in (404, 422)
+    assert c.delete("/corrections/HOSP-0001").status_code == 422
+    # once a model was trained with it, the correction belongs to that dataset
+    (data / "datasets/v0002").mkdir(parents=True)
+    write_manifest(read_manifest(manifest), data / "datasets/v0002/manifest.csv")
+    res = c.delete(f"/corrections/{second['image_id']}")
+    assert res.status_code == 409 and "v0002" in res.json()["detail"]
+    assert len(read_manifest(manifest)) == 1
 
 
 @pytest.mark.parametrize("bad", [{"patient_id": "Juan Perez"}, {"joint": "KNEE"}, {"gs_grade": "0", "pd_grade": "2"}])

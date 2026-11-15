@@ -13,6 +13,7 @@ Endpoints:
                        (&palette=cividis for a colour-blind-safe ramp; default warm)
     POST /corrections  multipart: gs, pd, patient_id, joint, side, gs_grade, pd_grade
                        -> stored in <data_dir>/incoming/corrections/<date>/ for the next retrain
+    DELETE /corrections/{image_id}  undo a correction (files + manifest row) while no dataset uses it
     GET  /workspace/status  shared workspace: global model, images waiting, run in progress, history
                        (``--workspace`` only) plus the version this API serves
     POST /model/reload switch to the registry's current model if it changed (between requests)
@@ -42,6 +43,12 @@ from rausnet.serve.inference import Predictor
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 PSEUDONYM = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+CORRECTION_ID = re.compile(r"^corr-[0-9a-f]{12}$")
+
+
+def _ids_in(manifest: Path) -> set[str]:
+    with open(manifest, newline="", encoding="utf-8") as fh:
+        return {row.get("image_id", "") for row in csv.DictReader(fh)}
 
 
 def resolve_model_dir(models_dir: str | Path = "models") -> Path:
@@ -167,6 +174,40 @@ def create_app(model_dir: str | Path, data_dir: str | Path | None = None, models
                     writer.writeheader()
                 writer.writerow(asdict(record))
         return {"image_id": image_id, "manifest": manifest.relative_to(data_dir).as_posix()}
+
+    @app.delete("/corrections/{image_id}")
+    def undo_correction(image_id: str):
+        if data_dir is None:
+            raise HTTPException(503, "corrections are disabled: start the API with --data-dir")
+        if not CORRECTION_ID.match(image_id):
+            raise HTTPException(422, "not a correction id")
+        root = Path(data_dir)
+        with lock:
+            # a correction already used to train a model is part of that dataset: never remove it
+            for ds in sorted((root / "datasets").glob("*/manifest.csv")):
+                if image_id in _ids_in(ds):
+                    raise HTTPException(409, f"{image_id} is already part of {ds.parent.name}; it cannot be undone")
+            for manifest in sorted((root / "incoming" / "corrections").glob("*/manifest.csv")):
+                with open(manifest, newline="", encoding="utf-8") as fh:
+                    reader = csv.DictReader(fh)
+                    fields, rows = reader.fieldnames or FIELDNAMES, list(reader)
+                keep = [r for r in rows if r.get("image_id") != image_id]
+                if len(keep) == len(rows):
+                    continue
+                gone = next(r for r in rows if r.get("image_id") == image_id)
+                tmp = manifest.with_suffix(".tmp")
+                with open(tmp, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=fields)
+                    writer.writeheader()
+                    writer.writerows(keep)
+                os.replace(tmp, manifest)  # manifest first: a sync never sees a row without its image
+                for rel in (gone.get("gs_path"), gone.get("pd_path")):
+                    if rel:
+                        (manifest.parent / rel).unlink(missing_ok=True)
+                if not keep:
+                    manifest.unlink()
+                return {"removed": image_id}
+        raise HTTPException(404, f"{image_id} not found")
 
     return app
 

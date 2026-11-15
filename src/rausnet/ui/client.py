@@ -49,6 +49,9 @@ class ApiClient:
                 "gs_grade": str(gs_grade), "pd_grade": str(pd_grade)}
         return self._check(self.http.post("/corrections", files=self._files(gs, pd), data=data))
 
+    def undo_correction(self, image_id: str) -> dict:
+        return self._check(self.http.delete(f"/corrections/{image_id}"))
+
     def workspace_status(self) -> dict:
         return self._check(self.http.get("/workspace/status"))
 
