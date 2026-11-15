@@ -74,8 +74,11 @@ def test_improve_bootstraps_publishes_and_skips_until_enough_new_data(tmp_path):
         "train.amp=false", "promotion.rule=tolerance", "promotion.tolerance=10", "promotion.n_boot=50",
         "postprocess.export=false", "improve.min_new_images=20"])
 
-    first = improve(ws.root, cfg)
+    stages = []
+    first = improve(ws.root, cfg, progress=lambda stage, **info: stages.append((stage, info)))
     assert first["action"] == "retrained" and first["version"] == "v0001" and first["promoted"]
+    assert [x for x, _ in stages] == ["checking", "staging", "training", "publishing"]
+    assert stages[2][1]["epochs"] == 1 and stages[3][1] == {"version": "v0001"}
     assert Registry(ws.models).current().version == "v0001"
     assert (ws.models / "v0001/model.pt").exists() and (ws.models / "v0001/calibration.json").exists()
     assert (ws.data / "datasets/v0001/manifest.csv").exists() and not (ws.data / "synth").exists()

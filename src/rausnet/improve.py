@@ -3,6 +3,9 @@
     python -m rausnet.improve run    --workspace /content/drive/MyDrive/RAUSNet
     python -m rausnet.improve status --workspace <path>          # JSON, for people and the GUI
     python -m rausnet.improve init   --workspace <path> [--models models --data-root J:/rausnet_data]
+    python -m rausnet.improve versions --workspace <path>        # registered versions, newest first
+    python -m rausnet.improve rollback --workspace <path> --version v0002 [--reason "..."]
+    python -m rausnet.improve gpu                                # can this computer train?
 
 The workspace is one folder shared by every site, e.g. a Google Drive folder synced on the
 hospital PCs with Google Drive for desktop::
@@ -43,6 +46,7 @@ DEFAULT_SPEC = {"synthetic": {"dir": "synth", "patients": 200, "seed": 0}}
 DEFAULT_MIN_NEW = 20  # same as improve.min_new_images in configs/retrain/default.yaml
 REPOSITORY = "JB-GB/AI_for_Biomedical_Engineers"
 NOTEBOOK = "notebooks/colab_improve.ipynb"
+PROGRESS_PREFIX = "RAUSNET_PROGRESS "
 
 
 def colab_url(repository: str = REPOSITORY, branch: str = "PIA_devl") -> str:
@@ -111,7 +115,8 @@ class Lock:
             raise WorkspaceLocked("another improvement run just started") from exc
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump({"time": time.time(), "started": time.strftime("%Y-%m-%d %H:%M:%S"),
-                       "runtime": runtime_name()}, fh)
+                       "runtime": runtime_name(), "pid": os.getpid(),
+                       "run_id": os.environ.get("RAUSNET_RUN_ID")}, fh)
         return self
 
     def __exit__(self, *exc):
@@ -202,6 +207,56 @@ def status(workspace: str | Path, min_new_images: int = DEFAULT_MIN_NEW) -> dict
     }
 
 
+def versions(workspace: str | Path) -> list[dict]:
+    """Every registered version, newest first, with what a person needs to choose one."""
+    from rausnet.registry import Registry
+
+    reg = Registry(Workspace(workspace).models)
+    out = []
+    for e in reversed(reg.entries):
+        folder = reg.dir / Path(e.model_path).parent
+        out.append({"version": e.version, "created": e.created, "status": e.status, "parent": e.parent,
+                    "test_qwk": e.test_metrics.get("qwk"), "decision": e.decision,
+                    "servable": (folder / "model.onnx").exists()})
+    return out
+
+
+def rollback(workspace: str | Path, version: str, reason: str = "") -> dict:
+    """Serve an archived version again; logged like an improvement run. Holds the workspace lock,
+    so it never races an improvement publishing a new registry."""
+    from rausnet.registry import Registry
+
+    ws = Workspace(workspace)
+    with Lock(ws):
+        reg = Registry(ws.models)
+        target = reg.get(version)  # KeyError: unknown version
+        if target.status != "archived":
+            raise ValueError(f"{version} is {target.status}; only archived versions can be served again")
+        if not (reg.dir / Path(target.model_path).parent / "model.onnx").exists():
+            raise ValueError(f"{version} has no model.onnx and cannot be served")
+        previous = reg.current()
+        reg.set_current(version)  # ValueError unless archived
+    entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "runtime": runtime_name(), "action": "rolled back",
+             "version": version, "previous": previous.version if previous else None, "reason": reason[:200]}
+    ws.log(entry)
+    return entry
+
+
+def gpu_info() -> dict:
+    """Whether this computer can train: PyTorch installed and a CUDA GPU (name only)."""
+    if importlib.util.find_spec("torch") is None:
+        return {"torch": False, "cuda": False, "name": None}
+    import torch
+
+    cuda = torch.cuda.is_available()
+    return {"torch": True, "cuda": cuda, "name": torch.cuda.get_device_name(0) if cuda else None}
+
+
+def _progress_printer(stage: str, **info) -> None:
+    """Machine-readable progress for the desktop app (one line per stage on stdout)."""
+    print(PROGRESS_PREFIX + json.dumps({"stage": stage, **info}), flush=True)
+
+
 def _ensure_synthetic(spec: dict, data_root: Path) -> str | None:
     """Regenerate the deterministic synthetic seed set in ``data_root`` if missing."""
     s = spec.get("synthetic")
@@ -217,8 +272,11 @@ def _ensure_synthetic(spec: dict, data_root: Path) -> str | None:
 
 
 def improve(workspace: str | Path, cfg: dict, min_new_images: int | None = None,
-            staging: str | Path | None = None) -> dict:
-    """One improvement cycle; returns (and logs) a summary. Never leaves a partial model behind."""
+            staging: str | Path | None = None, progress=None) -> dict:
+    """One improvement cycle; returns (and logs) a summary. Never leaves a partial model behind.
+
+    ``progress(stage, **info)`` is called at each stage (checking, staging, training, publishing).
+    """
     ws = Workspace(workspace).ensure()
     opts = cfg.get("improve") or {}
     min_new = opts.get("min_new_images", DEFAULT_MIN_NEW) if min_new_images is None else min_new_images
@@ -227,7 +285,7 @@ def improve(workspace: str | Path, cfg: dict, min_new_images: int | None = None,
     with Lock(ws, opts.get("lock_stale_hours", 6.0)):
         stage = Path(staging) if staging else Path(tempfile.mkdtemp(prefix="rausnet_stage_"))
         try:
-            _cycle(ws, cfg, stage, min_new, summary)
+            _cycle(ws, cfg, stage, min_new, summary, progress or (lambda *_a, **_k: None))
         finally:
             if not staging:
                 shutil.rmtree(stage, ignore_errors=True)
@@ -236,8 +294,10 @@ def improve(workspace: str | Path, cfg: dict, min_new_images: int | None = None,
     return summary
 
 
-def _cycle(ws: Workspace, cfg: dict, stage: Path, min_new: int, summary: dict) -> None:
+def _cycle(ws: Workspace, cfg: dict, stage: Path, min_new: int, summary: dict, progress) -> None:
     from rausnet.retrain import retrain
+
+    progress("checking")
 
     s_models, s_data = stage / "models", stage / "data"
     cur = _current(ws.models) if (ws.models / "registry.json").exists() else None
@@ -250,6 +310,7 @@ def _cycle(ws: Workspace, cfg: dict, stage: Path, min_new: int, summary: dict) -
             return
 
     # stage: registry + current version, all workspace data, regenerated synthetic seed
+    progress("staging")
     s_models.mkdir(parents=True, exist_ok=True)
     if cur:
         shutil.copy2(ws.models / "registry.json", s_models / "registry.json")
@@ -271,7 +332,10 @@ def _cycle(ws: Workspace, cfg: dict, stage: Path, min_new: int, summary: dict) -
         run_cfg = json.loads(json.dumps(cfg))
         run_cfg["models_dir"], run_cfg["output_dir"] = str(s_models), str(stage / "outputs")
         run_cfg["data"]["root"] = str(s_data)
+        t = run_cfg["train"]
+        progress("training", epochs=t.get("finetune_epochs", t["epochs"]) if cur else t["epochs"], new_images=n_new)
         entry = retrain(run_cfg, add)
+        progress("publishing", version=entry.version)
         # publish: dataset manifest -> version folder -> registry.json (readers switch last)
         new_ds = Path(entry.dataset_manifest).parent
         _publish_dir(s_data / new_ds, ws.data / new_ds)
@@ -316,7 +380,7 @@ def main(argv=None) -> None:
     from rausnet.train import load_config
 
     parser = argparse.ArgumentParser(description="Continuous improvement of the global model.")
-    parser.add_argument("command", choices=["run", "status", "init"])
+    parser.add_argument("command", choices=["run", "status", "init", "versions", "rollback", "gpu"])
     parser.add_argument("--workspace", default=os.environ.get("RAUSNET_WORKSPACE"),
                         help="shared workspace folder (default: $RAUSNET_WORKSPACE)")
     parser.add_argument("--config", default=DEFAULT_CONFIG)
@@ -325,17 +389,33 @@ def main(argv=None) -> None:
     parser.add_argument("--models", default=None, help="init: local registry to import")
     parser.add_argument("--data-root", default=None, help="init: local data root to import from")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE")
+    parser.add_argument("--version", default=None, help="rollback: archived version to serve again")
+    parser.add_argument("--reason", default="", help="rollback: why (logged, no patient data)")
+    parser.add_argument("--progress", action="store_true", help="run: print progress lines for the app")
     args = parser.parse_args(argv)
+    if args.command == "gpu":
+        print(json.dumps(gpu_info()))
+        return
     if not args.workspace:
         parser.error("pass --workspace or set RAUSNET_WORKSPACE")
     if args.command == "status":
         print(json.dumps(status(args.workspace), indent=2))
+    elif args.command == "versions":
+        print(json.dumps(versions(args.workspace), indent=2))
+    elif args.command == "rollback":
+        if not args.version:
+            parser.error("rollback needs --version")
+        print(json.dumps(rollback(args.workspace, args.version, args.reason), indent=2))
     elif args.command == "init":
         print(json.dumps(init(args.workspace, args.models, args.data_root), indent=2))
     else:
         os.environ.setdefault("RAUSNET_DATA_DIR", str(Path(args.workspace) / "data"))
         cfg = load_config(args.config, overrides=args.set)
-        print(json.dumps(improve(args.workspace, cfg, args.min_new, args.staging), indent=2))
+        summary = improve(args.workspace, cfg, args.min_new, args.staging,
+                          _progress_printer if args.progress else None)
+        if args.progress:
+            _progress_printer("done", summary=summary)
+        print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

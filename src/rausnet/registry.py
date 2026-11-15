@@ -66,6 +66,18 @@ class Registry:
         self.entries.append(entry)
         self.save()
 
+    def set_current(self, version: str) -> ModelEntry:
+        """Serve an archived version again (roll back); the current one becomes archived."""
+        target = self.get(version)
+        if target.status != "archived":
+            raise ValueError(f"{version} is {target.status}; only archived versions can be served again")
+        for e in self.entries:
+            if e.status == "current":
+                e.status = "archived"
+        target.status = "current"
+        self.save()
+        return target
+
     def save(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
