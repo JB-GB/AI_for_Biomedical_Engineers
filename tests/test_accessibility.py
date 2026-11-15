@@ -15,6 +15,7 @@ from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QLineEdit,
@@ -90,8 +91,8 @@ def test_every_control_has_an_accessible_name(window):
     unnamed = []
     for wd in window.findChildren(QAbstractButton) + window.findChildren(QComboBox) + \
             window.findChildren(QLineEdit) + window.findChildren(QProgressBar):
-        if isinstance(wd.parent(), QTabBar) or isinstance(wd.parent(), QComboBox):
-            continue  # Qt's own tab scroll arrows / combo internals carry Qt's names
+        if isinstance(wd.parent(), QTabBar | QComboBox | QAbstractItemView):
+            continue  # Qt's own tab scroll arrows / combo and table internals carry Qt's names
         text = wd.text() if isinstance(wd, QAbstractButton) else ""
         if not (wd.accessibleName() or text):
             unnamed.append(type(wd).__name__)

@@ -52,3 +52,9 @@ def isolated_qt_settings(tmp_path_factory):
 def isolated_cases_file(tmp_path, monkeypatch):
     """Today's cases of the desktop app go to the test's temporary folder."""
     monkeypatch.setenv("RAUSNET_CASES_FILE", str(tmp_path / "cases_today.json"))
+
+
+@pytest.fixture(autouse=True)
+def no_local_training(monkeypatch):
+    """The desktop app never probes the GPU or trains in tests unless a test turns it on."""
+    monkeypatch.setenv("RAUSNET_GPU", "off")

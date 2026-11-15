@@ -435,6 +435,7 @@ class MainWindow(QMainWindow):
 
         self.improve_view = ImproveView(client, self.t)
         self.improve_view.status_changed.connect(self._on_status)
+        self.improve_view.model_switched.connect(lambda res: self._model_changed(res["served_version"]))
         self.tabs = QTabWidget()
         self.tabs.addTab(analyze_tab, self.t["tab_analyze"])
         self.tabs.addTab(self.improve_view, self.t["tab_improve"])
@@ -509,6 +510,11 @@ class MainWindow(QMainWindow):
         form.addRow(self.t["text_size"], self.text_size)
         form.addRow(self.contrast_box)
         form.addRow(self.t["palette"], self.palette_box)
+        self.admin_box = QCheckBox(self.t["admin"])
+        self.admin_box.setMinimumHeight(44)
+        self.admin_box.setChecked(str(self.prefs.value("admin", "false")).lower() == "true")
+        form.addRow(self.admin_box)
+        self.admin_box.toggled.connect(lambda _on: self.save_preferences())
         self.text_size.currentIndexChanged.connect(lambda _i: self.save_preferences())
         self.contrast_box.toggled.connect(lambda _on: self.save_preferences())
         self.palette_box.currentIndexChanged.connect(lambda _i: self.save_preferences())
@@ -518,6 +524,7 @@ class MainWindow(QMainWindow):
         self.prefs.setValue("text_scale", a11y.TEXT_SCALES[self.text_size.currentIndex()])
         self.prefs.setValue("high_contrast", "true" if self.contrast_box.isChecked() else "false")
         self.prefs.setValue("palette", self.palette_box.currentData())
+        self.prefs.setValue("admin", "true" if self.admin_box.isChecked() else "false")
         self.apply_preferences()
 
     def apply_preferences(self) -> None:
@@ -525,6 +532,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(a11y.stylesheet(self.contrast_box.isChecked()))
         a11y.apply_text_scale(a11y.TEXT_SCALES[self.text_size.currentIndex()], self.scaled_fonts)
         self.palette_name = self.palette_box.currentData()
+        self.improve_view.set_admin(self.admin_box.isChecked())
 
     # ---- keyboard and drag-and-drop
     def dragEnterEvent(self, event) -> None:
@@ -583,12 +591,20 @@ class MainWindow(QMainWindow):
         except ApiError as exc:
             self._error(exc)
             return None
+        self._model_changed(res["version"])
+        self.improve_view.refresh()
+        return res
+
+    def _model_changed(self, version: str) -> None:
         self._show_model(self.client.model())
         self.result = None  # a report must describe the model that produced it
         self.export_btn.setEnabled(False)
-        self.status.setText(self.t["adopted"].format(version=res["version"]))
-        self.improve_view.refresh()
-        return res
+        self.status.setText(self.t["adopted"].format(version=version))
+
+    def closeEvent(self, event) -> None:
+        # a killed child would keep the workspace lock for hours: cancel cleanly instead
+        self.improve_view.runner.cancel()
+        super().closeEvent(event)
 
     def choose_workspace(self, path: str | None = None) -> bool:
         if self.connect is None:
