@@ -1,0 +1,59 @@
+RAUSNet 0.2.0 - Graduación de sinovitis por ultrasonido (EULAR-OMERACT)
+=======================================================================
+
+SOLO PARA INVESTIGACIÓN. No es un dispositivo médico ni hace diagnósticos.
+El modelo incluido (v0005) se entrenó con imágenes SINTÉTICAS: todavía no está
+validado con pacientes reales.
+
+Qué hace: gradúa la sinovitis (0 normal, 1 leve, 2 moderada, 3 grave) en la
+escala de grises (GS) y el Power Doppler (PD) de MCP 2-3 y muñeca. La sinovitis
+es el signo ecográfico de inflamación que se valora en la artritis reumatoide;
+el resultado es una ayuda para decidir la derivación, no un diagnóstico.
+
+Requisitos: Windows 10 u 11 de 64 bits. No necesita Python ni internet.
+
+INICIO
+1. Descomprima la carpeta completa (no ejecute desde dentro del .zip).
+2. Abra RAUSNet.exe. Si Windows SmartScreen avisa ("Windows protegió su PC"),
+   pulse "Más información" y luego "Ejecutar de todas formas" (la aplicación
+   no está firmada).
+3. La primera vez crea su carpeta de trabajo local con el modelo incluido:
+   %LOCALAPPDATA%\RAUSNet\desktop\workspace
+
+1) PREDECIR EN UNA IMAGEN (pestaña "Analizar")
+   - Arrastre las dos imágenes (GS y PD) a la ventana, o pulse Ctrl+O.
+   - Pulse "Analizar" (Ctrl+Intro).
+   - Verá el grado combinado en número y palabra, la confianza, los grados GS
+     y PD y, si corresponde, el aviso "Derivar a un reumatólogo".
+   - "Mostrar mapa de calor": zonas que más influyeron en el grado.
+   - "Exportar informe PDF" (Ctrl+P).
+
+2) ALIMENTAR AL MODELO (corregir y mejorar)
+   - Si el grado no es correcto: escriba el seudónimo del paciente (por ejemplo
+     HOSP-0001, nunca el nombre), elija el grado GS y PD correctos y pulse
+     "Enviar corrección" (3 clics). "Deshacer" (Ctrl+Z) la retira.
+   - Las correcciones se guardan en la carpeta de trabajo y se usan en la
+     próxima mejora del modelo.
+   - Para que todo el equipo alimente un modelo común: "Ajustes" > "Elegir
+     carpeta…" y elija una carpeta vacía de Google Drive para escritorio. La
+     aplicación ofrece prepararla con el modelo incluido. Los demás equipos
+     eligen esa misma carpeta.
+   - "Mejorar el modelo" > "Mejorar en Colab": abre el cuaderno; pulse
+     "Ejecutar todo" y permita el acceso a Drive. Cuando hay un modelo nuevo,
+     aparece la barra "Usar el nuevo modelo".
+
+3) VERIFICAR EL ESTADO Y LA VERSIÓN DEL MODELO
+   - Arriba de la ventana: "Modelo vXXXX · etapa ..." (versión en uso) y la
+     franja roja si el modelo no está validado clínicamente.
+   - Pestaña "Mejorar el modelo": versión y fecha del modelo global, calidad
+     en palabras (pase el ratón para ver el número), imágenes nuevas que
+     faltan para la próxima mejora, mejora en curso, historial y la tabla de
+     versiones (en uso / anterior / no aprobada).
+   - Responsables: "Ajustes" > "Opciones de responsable" permite volver a una
+     versión anterior.
+
+ACCESIBILIDAD
+   - F1: ayuda y atajos. Tamaño de texto hasta 200 % y alto contraste en
+     "Ajustes". Compatible con lectores de pantalla (NVDA).
+
+Más información y código: https://github.com/JB-GB/AI_for_Biomedical_Engineers

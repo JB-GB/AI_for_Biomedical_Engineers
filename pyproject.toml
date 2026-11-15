@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rausnet"
-version = "0.1.0"
+version = "0.2.0"
 description = "Retrainable EULAR-OMERACT synovitis grading on joint ultrasound (research use only)"
 readme = "README.md"
 requires-python = ">=3.11"
