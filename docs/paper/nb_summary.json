@@ -1,0 +1,54 @@
+{
+ "test": {
+  "n": 282,
+  "accuracy": 0.986,
+  "qwk": 0.993,
+  "recall": [
+   1.0,
+   0.968,
+   0.985,
+   1.0
+  ],
+  "precision": [
+   1.0,
+   0.989,
+   0.957,
+   1.0
+  ],
+  "specificity": [
+   1.0,
+   0.995,
+   0.986,
+   1.0
+  ],
+  "binary_sensitivity": 0.99,
+  "binary_specificity": 0.984,
+  "binary_accuracy": 0.986
+ },
+ "unseen": {
+  "n": 180,
+  "accuracy": 0.978,
+  "qwk": 0.985,
+  "recall": [
+   1.0,
+   0.971,
+   0.982,
+   0.889
+  ],
+  "precision": [
+   1.0,
+   0.986,
+   0.947,
+   1.0
+  ],
+  "specificity": [
+   1.0,
+   0.991,
+   0.976,
+   1.0
+  ],
+  "binary_sensitivity": 0.984,
+  "binary_specificity": 0.983,
+  "binary_accuracy": 0.983
+ }
+}
